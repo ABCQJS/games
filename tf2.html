@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>20关升级版经典塔防游戏</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        body {
+            display: flex; flex-direction: column; align-items: center;
+            background: #1a1a2e; color: white; padding: 20px;
+        }
+        #gameCanvas {
+            border: 3px solid #4CAF50; background: #2c3e50; border-radius: 8px;
+            display: block; box-shadow: 0 0 18px rgba(76,175,80,.35);
+        }
+        .game-info, .status-bar {
+            width: 800px; display: flex; justify-content: space-between;
+            margin-bottom: 10px; font-size: 18px;
+        }
+        .status-bar {
+            background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px; padding: 10px 18px; margin-top: 8px;
+        }
+        .tower-shop, .level-panel, .skill-panel {
+            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px;
+        }
+        .tower-btn, .level-btn, .skill-btn, .game-over button {
+            border: none; border-radius: 5px; color: white; cursor: pointer;
+        }
+        .tower-btn, .skill-btn {
+            padding: 10px 20px; font-size: 16px; transition: .2s;
+        }
+        .tower-btn {
+            background: #3498db;
+        }
+        .tower-btn:hover, .skill-btn:hover { transform: scale(1.05); }
+        .tower-btn.selected { border: 3px solid #f1c40f; }
+        .tower-btn.disabled { background: #7f8c8d; cursor: not-allowed; }
+        .skill-btn {
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+        }
+        .skill-btn.cooldown {
+            background: linear-gradient(135deg, #5b6476, #7a8194);
+            cursor: not-allowed;
+            opacity: 0.75;
+        }
+        .level-btn {
+            padding: 8px 16px; background: #27ae60;
+        }
+        .level-btn:disabled { background: #95a5a6; cursor: not-allowed; }
+        .game-over {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,.8); padding: 40px; border-radius: 10px;
+            text-align: center; font-size: 24px; display: none;
+        }
+        .game-over button {
+            margin-top: 20px; padding: 10px 20px; background: #e74c3c; font-size: 18px;
+        }
+        .upgrade-tip {
+            margin-top: 10px; font-size: 14px; color: #f1c40f;
+        }
+        .level-tip {
+            margin-top: 5px; font-size: 13px; color: #90caf9;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-info">
+        <div>金币: <span id="gold">50</span></div>
+        <div>生命值: <span id="hp">10</span></div>
+        <div>关卡: <span id="currentLevel">1</span>/20</div>
+    </div>
+    <div class="status-bar">
+        <div>连杀: <span id="combo">0</span></div>
+        <div>积分: <span id="score">0</span></div>
+        <div>收益倍数: <span id="multiplier">1.0x</span></div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div class="tower-shop">
+        <button class="tower-btn" data-type="basic" data-cost="20">基础塔 (20)</button>
+        <button class="tower-btn" data-type="sniper" data-cost="50">狙击塔 (50)</button>
+        <button class="tower-btn" data-type="aoe" data-cost="80">范围塔 (80)</button>
+        <button class="tower-btn" data-type="slow" data-cost="60">减速塔 (60)</button>
+        <button class="tower-btn" data-type="poison" data-cost="90">毒伤塔 (90)</button>
+    </div>
+
+    <div class="skill-panel">
+        <button class="skill-btn" data-skill="freeze">冰封（12s）</button>
+        <button class="skill-btn" data-skill="bomb">爆裂（18s）</button>
+        <button class="skill-btn" data-skill="boost">补给（14s）</button>
+    </div>
+    
+    <div class="level-panel">
+        <button class="level-btn" id="prevLevel" disabled>上一关</button>
+        <button class="level-btn" id="nextLevel">下一关</button>
+        <button class="level-btn" id="restart">重新开始</button>
+    </div>
+
+    <div class="upgrade-tip">提示1：右键点击已放置的塔可升级（消耗当前塔造价的1.5倍，最高3级）</div>
+    <div class="level-tip">提示2：关卡越高，敌人越强、道具生成概率越高，通关难度递增</div>
+    
+    <div class="game-over" id="gameOver">
+        <div id="gameOverText"></div>
+        <button onclick="restartGame()">重新开始</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridSize = 40;
+        const towerTypes = {
+            basic: { color: '#4CAF50', range: 3, damage: 10, fireRate: 1, cost: 20 },
+            sniper: { color: '#9C27B0', range: 6, damage: 50, fireRate: 2, cost: 50 },
+            aoe: { color: '#FF9800', range: 2, damage: 15, fireRate: 1.5, cost: 80, aoeRadius: 1 },
+            slow: { color: '#2196F3', range: 4, slowDuration: 2, fireRate: 1.2, cost: 60 },
+            poison: { color: '#4CAF50', range: 3, damage: 5, poisonDamage: 2, poisonDuration: 3, fireRate: 1, cost: 90 }
+        };
+        const enemyTypes = {
+            basic: { color: '#F44336', health: 50, speed: 0.5, gold: 5 },
+            fast: { color: '#2196F3', health: 30, speed: 1, gold: 8 },
+            tank: { color: '#795548', health: 200, speed: 0.2, gold: 15 },
+            elite: { color: '#E91E63', health: 100, speed: 0.7, gold: 20 },
+            boss: { color: '#000000', health: 500, speed: 0.3, gold: 50 }
+        };
+        const propTypes = {
+            gold: { color: '#FFD700', value: 20, text: '+20金币' },
+            hp: { color: '#FF4444', value: 5, text: '+5生命值' },
+            damage: { color: '#FF8800', value: 0.2, text: '伤害+20%' }
+        };
+
+        const game = {
+            gold: 50,
+            hp: 10,
+            level: 1,
+            selected: null,
+            towers: [],
+            enemies: [],
+            projectiles: [],
+            coins: [],
+            props: [],
+            gameOver: false,
+            time: 0,
+            waveIndex: 0,
+            waveTimer: 0,
+            damageBoost: 1,
+            combo: 0,
+            score: 0,
+            skillCooldowns: { freeze: 0, bomb: 0, boost: 0 },
+            mouse: null,
+            animId: null,
+            last: 0
+        };
+
+        const ui = {
+            gold: document.getElementById('gold'),
+            hp: document.getElementById('hp'),
+            level: document.getElementById('currentLevel'),
+            combo: document.getElementById('combo'),
+            score: document.getElementById('score'),
+            multiplier: document.getElementById('multiplier'),
+            gameOver: document.getElementById('gameOver'),
+            gameOverText: document.getElementById('gameOverText'),
+            towerButtons: [...document.querySelectorAll('.tower-btn')],
+            skillButtons: [...document.querySelectorAll('.skill-btn')],
+            prevLevel: document.getElementById('prevLevel'),
+            nextLevel: document.getElementById('nextLevel'),
+            restart: document.getElementById('restart')
+        };
+
+        const skillDefs = {
+            freeze: { cooldown: 12, name: '冰封', duration: 4 },
+            bomb: { cooldown: 18, name: '爆裂', damage: 120 },
+            boost: { cooldown: 14, name: '补给', gold: 25 }
+        };
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function shade(hex, amount) {
+            hex = hex.replace('#', '');
+            let num = parseInt(hex, 16);
+            let r = (num >> 16) + amount;
+            let g = ((num >> 8) & 0x00FF) + amount;
+            let b = (num & 0x0000FF) + amount;
+            r = clamp(r, 0, 255);
+            g = clamp(g, 0, 255);
+            b = clamp(b, 0, 255);
+            return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+        }
+
+        function makeRandomPath(seed) {
+            const path = [{ x: 0, y: Math.floor(Math.random() * 8) + 2 }];
+            let x = 0;
+            let y = path[0].y;
+            while (x < 19) {
+                x++;
+                if (Math.random() < 0.35 && y > 2 && y < 12) {
+                    y += Math.random() < 0.5 ? 1 : -1;
+                }
+                if (Math.random() < 0.15) {
+                    y += Math.random() < 0.5 ? 1 : -1;
+                }
+                y = clamp(y, 2, 12);
+                path.push({ x, y });
+            }
+            path.push({ x: 19, y: y });
+            return path;
+        }
+
+        function buildLevel(path, index) {
+            const level = index + 1;
+            const waveCount = Math.min(5 + Math.floor(level / 2), 12);
+            const waves = [];
+            const strength = 1 + level * 0.1;
+            const enemyCountMulti = 1 + level * 0.2;
+            const spawnRate = Math.max(0.3, 1 - level * 0.03);
+            for (let i = 0; i < waveCount; i++) {
+                let type = 'basic';
+                if (i >= waveCount - 1 && level >= 2) type = 'boss';
+                else if (i >= waveCount - 3 && level >= 5) type = 'elite';
+                else if (i >= waveCount - 5 && level >= 3) type = 'tank';
+                else if (i >= waveCount - 4 && level >= 2) type = 'fast';
+                waves.push({ time: i * 8 + 1, count: Math.floor((5 + i * 3) * enemyCountMulti), type });
+            }
+            return { path, enemyWaves: waves, enemySpawnRate: spawnRate, propSpawnRate: Math.min(0.01, 0.002 + level * 0.0004), enemyStrengthMultiplier: strength };
+        }
+
+        const levelTemplates = [
+            [{ x: 0, y: 3 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 3, y: 4 }, { x: 3, y: 5 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 }, { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 7, y: 4 }, { x: 8, y: 4 }, { x: 9, y: 4 }, { x: 10, y: 4 }, { x: 10, y: 5 }, { x: 10, y: 6 }, { x: 10, y: 7 }, { x: 10, y: 8 }, { x: 11, y: 8 }, { x: 12, y: 8 }, { x: 13, y: 8 }, { x: 14, y: 8 }, { x: 15, y: 8 }, { x: 16, y: 8 }, { x: 17, y: 8 }, { x: 18, y: 8 }, { x: 19, y: 8 }],
+            [{ x: 0, y: 5 }, { x: 1, y: 5 }, { x: 2, y: 5 }, { x: 3, y: 5 }, { x: 3, y: 4 }, { x: 3, y: 3 }, { x: 4, y: 3 }, { x: 5, y: 3 }, { x: 6, y: 3 }, { x: 6, y: 4 }, { x: 6, y: 5 }, { x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }, { x: 9, y: 6 }, { x: 9, y: 7 }, { x: 8, y: 7 }, { x: 7, y: 7 }, { x: 6, y: 7 }, { x: 6, y: 8 }, { x: 6, y: 9 }, { x: 7, y: 9 }, { x: 8, y: 9 }, { x: 9, y: 9 }, { x: 10, y: 9 }, { x: 11, y: 9 }, { x: 12, y: 9 }, { x: 13, y: 9 }, { x: 14, y: 9 }, { x: 15, y: 9 }, { x: 16, y: 9 }, { x: 17, y: 9 }, { x: 18, y: 9 }, { x: 19, y: 9 }],
+            [{ x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }, { x: 3, y: 3 }, { x: 3, y: 4 }, { x: 4, y: 4 }, { x: 5, y: 4 }, { x: 5, y: 3 }, { x: 5, y: 2 }, { x: 6, y: 2 }, { x: 7, y: 2 }, { x: 7, y: 3 }, { x: 7, y: 4 }, { x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 6 }, { x: 10, y: 7 }, { x: 9, y: 7 }, { x: 8, y: 7 }, { x: 7, y: 7 }, { x: 6, y: 7 }, { x: 5, y: 7 }, { x: 4, y: 7 }, { x: 3, y: 7 }, { x: 2, y: 7 }, { x: 1, y: 7 }, { x: 0, y: 7 }, { x: 0, y: 8 }, { x: 0, y: 9 }, { x: 1, y: 9 }, { x: 2, y: 9 }, { x: 3, y: 9 }, { x: 4, y: 9 }, { x: 5, y: 9 }, { x: 6, y: 9 }, { x: 7, y: 9 }, { x: 8, y: 9 }, { x: 9, y: 9 }, { x: 10, y: 9 }, { x: 11, y: 9 }, { x: 12, y: 9 }, { x: 13, y: 9 }, { x: 14, y: 9 }, { x: 15, y: 9 }, { x: 16, y: 9 }, { x: 17, y: 9 }, { x: 18, y: 9 }, { x: 19, y: 9 }],
+            [{ x: 0, y: 6 }, { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 3, y: 7 }, { x: 3, y: 8 }, { x: 4, y: 8 }, { x: 5, y: 8 }, { x: 6, y: 8 }, { x: 7, y: 8 }, { x: 7, y: 7 }, { x: 7, y: 6 }, { x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 4 }, { x: 10, y: 3 }, { x: 11, y: 3 }, { x: 12, y: 3 }, { x: 13, y: 3 }, { x: 14, y: 3 }, { x: 14, y: 4 }, { x: 14, y: 5 }, { x: 15, y: 5 }, { x: 16, y: 5 }, { x: 17, y: 5 }, { x: 18, y: 5 }, { x: 19, y: 5 }],
+            [{ x: 0, y: 4 }, { x: 1, y: 4 }, { x: 2, y: 4 }, { x: 3, y: 4 }, { x: 3, y: 5 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 }, { x: 6, y: 7 }, { x: 6, y: 8 }, { x: 7, y: 8 }, { x: 8, y: 8 }, { x: 9, y: 8 }, { x: 10, y: 8 }, { x: 11, y: 8 }, { x: 11, y: 7 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 }, { x: 14, y: 6 }, { x: 15, y: 6 }, { x: 15, y: 5 }, { x: 15, y: 4 }, { x: 16, y: 4 }, { x: 17, y: 4 }, { x: 18, y: 4 }, { x: 19, y: 4 }]
+        ];
+
+        const baseLevelConfigs = Array.from({ length: 20 }, (_, i) => {
+            const path = i < levelTemplates.length ? levelTemplates[i] : makeRandomPath(i);
+            return buildLevel(path, i);
+        });
+        const levelConfigs = baseLevelConfigs.map(level => ({
+            ...level,
+            enemyWaves: level.enemyWaves.map(wave => ({ ...wave }))
+        }));
+
+        function resetLevelState() {
+            for (let i = 0; i < levelConfigs.length; i++) {
+                const base = baseLevelConfigs[i];
+                levelConfigs[i].enemyWaves = base.enemyWaves.map(wave => ({ ...wave }));
+            }
+        }
+
+        function updateUI() {
+            ui.gold.textContent = game.gold;
+            ui.hp.textContent = game.hp;
+            ui.level.textContent = game.level;
+            ui.combo.textContent = game.combo;
+            ui.score.textContent = game.score;
+            ui.multiplier.textContent = (1 + Math.floor(game.combo / 5) * 0.2).toFixed(1) + 'x';
+            ui.prevLevel.disabled = game.level <= 1;
+            ui.nextLevel.disabled = game.level >= levelConfigs.length || game.gameOver;
+            ui.towerButtons.forEach(btn => {
+                const cost = Number(btn.dataset.cost);
+                btn.classList.toggle('disabled', game.gold < cost);
+                if (game.gold < cost) btn.classList.remove('selected');
+            });
+            ui.skillButtons.forEach(btn => {
+                const skill = btn.dataset.skill;
+                const left = Math.max(0, game.skillCooldowns[skill] || 0);
+                const ready = left <= 0;
+                btn.classList.toggle('cooldown', !ready);
+                btn.textContent = ready ? `${skillDefs[skill].name}（${skillDefs[skill].cooldown}s）` : `${skillDefs[skill].name}（${left.toFixed(1)}s）`;
+            });
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#34495e'; ctx.lineWidth = 1;
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+            const path = levelConfigs[game.level - 1].path;
+            ctx.fillStyle = '#7f8c8d';
+            path.forEach(p => ctx.fillRect(p.x * gridSize, p.y * gridSize, gridSize, gridSize));
+            const end = path[path.length - 1];
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(end.x * gridSize, end.y * gridSize, gridSize, gridSize);
+        }
+
+        function drawTower(tower) {
+            const c = towerTypes[tower.type];
+            const x = tower.x * gridSize + gridSize / 2;
+            const y = tower.y * gridSize + gridSize / 2;
+            const radius = gridSize / 3 + (tower.level || 1) * 2;
+            ctx.fillStyle = shade(c.color, (tower.level || 1) * 20);
+            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.beginPath(); ctx.arc(x, y, (c.range + (tower.level - 1) * 0.5) * gridSize, 0, Math.PI * 2); ctx.stroke();
+            if (tower.cooldown > 0) {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.arc(x, y, radius, -Math.PI / 2, -Math.PI / 2 + (tower.cooldown / (c.fireRate / ((tower.level || 1) * 0.5))) * Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Lv' + (tower.level || 1), x, y + 5);
+        }
+
+        function drawEnemy(enemy) {
+            const cfg = enemyTypes[enemy.type];
+            const x = enemy.x * gridSize + gridSize / 2;
+            const y = enemy.y * gridSize + gridSize / 2;
+            ctx.fillStyle = enemy.slowTimer > 0 ? '#AAAAAA' : cfg.color;
+            ctx.fillRect(x - gridSize / 4, y - gridSize / 4, gridSize / 2, gridSize / 2);
+            if (enemy.poisonTimer > 0) {
+                ctx.fillStyle = 'rgba(0,255,0,0.5)';
+                ctx.beginPath(); ctx.arc(x, y, gridSize / 3, 0, Math.PI * 2); ctx.fill();
+            }
+            const max = cfg.health * levelConfigs[game.level - 1].enemyStrengthMultiplier;
+            ctx.fillStyle = '#e74c3c'; ctx.fillRect(x - gridSize / 4, y - gridSize / 2 - 5, gridSize / 2, 5);
+            ctx.fillStyle = '#2ecc71'; ctx.fillRect(x - gridSize / 4, y - gridSize / 2 - 5, (gridSize / 2) * (enemy.health / max), 5);
+            if (levelConfigs[game.level - 1].enemyStrengthMultiplier > 1) {
+                ctx.fillStyle = 'yellow'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('+' + Math.floor((levelConfigs[game.level - 1].enemyStrengthMultiplier - 1) * 100) + '%', x, y + gridSize / 2 + 10);
+            }
+        }
+
+        function drawProjectile(proj) {
+            ctx.fillStyle = proj.type === 'slow' ? '#2196F3' : proj.type === 'poison' ? '#4CAF50' : '#f1c40f';
+            ctx.beginPath(); ctx.arc(proj.x * gridSize, proj.y * gridSize, 5, 0, Math.PI * 2); ctx.fill();
+        }
+
+        function drawCoin(coin) {
+            const x = coin.x * gridSize;
+            const y = coin.y * gridSize;
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+        }
+
+        function drawProp(prop) {
+            const x = prop.x * gridSize;
+            const y = prop.y * gridSize;
+            ctx.fillStyle = propTypes[prop.type].color;
+            ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'white'; ctx.font = '8px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(propTypes[prop.type].text, x, y + 20);
+        }
+
+        function drawPreview() {
+            if (!game.selected || !game.mouse) return;
+            const gx = Math.floor(game.mouse.x / gridSize);
+            const gy = Math.floor(game.mouse.y / gridSize);
+            const path = levelConfigs[game.level - 1].path;
+            const invalid = path.some(p => p.x === gx && p.y === gy) || game.towers.some(t => t.x === gx && t.y === gy);
+            ctx.fillStyle = invalid ? 'rgba(255,0,0,0.3)' : 'rgba(255,255,255,0.25)';
+            ctx.fillRect(gx * gridSize, gy * gridSize, gridSize, gridSize);
+            const cfg = towerTypes[game.selected];
+            ctx.strokeStyle = invalid ? 'rgba(255,0,0,0.6)' : 'rgba(255,255,255,0.6)';
+            ctx.beginPath(); ctx.arc(gx * gridSize + gridSize / 2, gy * gridSize + gridSize / 2, cfg.range * gridSize, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        function spawnWave(dt) {
+            const level = levelConfigs[game.level - 1];
+            if (game.waveIndex >= level.enemyWaves.length) {
+                if (!game.enemies.length) {
+                    game.gameOver = true;
+                    ui.gameOverText.textContent = game.level < levelConfigs.length ? `恭喜！通关第${game.level}关！` : '恭喜通关全部20关！';
+                    ui.gameOver.style.display = 'block';
+                    ui.nextLevel.disabled = game.level >= levelConfigs.length;
+                }
+                return;
+            }
+            const wave = level.enemyWaves[game.waveIndex];
+            if (game.time < wave.time) return;
+            game.waveTimer += dt;
+            if (game.waveTimer >= level.enemySpawnRate && wave.count > 0) {
+                const start = level.path[0];
+                const base = enemyTypes[wave.type];
+                game.enemies.push({
+                    x: start.x, y: start.y, pathIndex: 0, type: wave.type,
+                    health: base.health * level.enemyStrengthMultiplier,
+                    speed: base.speed * level.enemyStrengthMultiplier,
+                    gold: Math.floor(base.gold * level.enemyStrengthMultiplier),
+                    slowTimer: 0, poisonTimer: 0, poisonDamage: 0
+                });
+                wave.count--;
+                game.waveTimer = 0;
+                if (wave.count <= 0) game.waveIndex++;
+            }
+        }
+
+        function spawnProp(dt) {
+            const level = levelConfigs[game.level - 1];
+            if (Math.random() < level.propSpawnRate * dt) {
+                let gx, gy;
+                do {
+                    gx = Math.floor(Math.random() * (canvas.width / gridSize));
+                    gy = Math.floor(Math.random() * (canvas.height / gridSize));
+                } while (level.path.some(p => p.x === gx && p.y === gy));
+                const keys = Object.keys(propTypes);
+                game.props.push({ x: gx, y: gy, type: keys[Math.floor(Math.random() * keys.length)], timer: 0 });
+            }
+        }
+
+        function updateEnemies(dt) {
+            const path = levelConfigs[game.level - 1].path;
+            for (let i = game.enemies.length - 1; i >= 0; i--) {
+                const e = game.enemies[i];
+                if (e.slowTimer > 0) e.slowTimer = Math.max(0, e.slowTimer - dt);
+                if (e.poisonTimer > 0) {
+                    e.poisonTimer = Math.max(0, e.poisonTimer - dt);
+                    e.health -= e.poisonDamage * dt;
+                    if (e.health <= 0) {
+                        game.gold += e.gold; game.coins.push({ x: e.x, y: e.y, scale: 1, scaleSpeed: 0.02, timer: 0, value: e.gold });
+                        game.enemies.splice(i, 1); updateUI(); continue;
+                    }
+                }
+                const target = path[e.pathIndex + 1];
+                if (!target) {
+                    game.hp -= 1;
+                    game.enemies.splice(i, 1);
+                    updateUI();
+                    if (game.hp <= 0) {
+                        game.gameOver = true;
+                        ui.gameOverText.textContent = `游戏结束！敌人到达终点！当前关卡：${game.level}`;
+                        ui.gameOver.style.display = 'block';
+                    }
+                    continue;
+                }
+                const dx = target.x - e.x; const dy = target.y - e.y; const dist = Math.hypot(dx, dy);
+                if (dist > 0) {
+                    const speed = e.speed * (e.slowTimer > 0 ? 0.4 : 1) * dt;
+                    e.x += (dx / dist) * speed;
+                    e.y += (dy / dist) * speed;
+                    if (Math.abs(e.x - target.x) < 0.1 && Math.abs(e.y - target.y) < 0.1) e.pathIndex++;
+                }
+            }
+        }
+
+        function updateTowers(dt) {
+            for (const tower of game.towers) {
+                const c = towerTypes[tower.type];
+                const level = tower.level || 1;
+                if (tower.cooldown > 0) tower.cooldown -= dt;
+                if (tower.cooldown > 0) continue;
+                const range = c.range + (level - 1) * 0.5;
+                const targets = game.enemies.filter(e => Math.hypot(e.x - tower.x, e.y - tower.y) <= range);
+                if (!targets.length) continue;
+                let target = targets[0];
+                if (tower.type === 'sniper') target = targets.reduce((a, b) => a.health > b.health ? a : b);
+                if (tower.type === 'aoe') target = targets[Math.floor(targets.length / 2)];
+                if (tower.type === 'slow') target = targets.reduce((a, b) => a.speed > b.speed ? a : b);
+                if (tower.type === 'poison') target = targets.reduce((a, b) => a.health < b.health ? a : b);
+                tower.cooldown = c.fireRate / (level * 0.6);
+                if (tower.type === 'slow') target.slowTimer = c.slowDuration * level;
+                else if (tower.type === 'poison') {
+                    target.poisonTimer = c.poisonDuration * level;
+                    target.poisonDamage = c.poisonDamage * level * game.damageBoost;
+                } else {
+                    game.projectiles.push({ x: tower.x, y: tower.y, targetX: target.x, targetY: target.y, speed: 5, damage: (c.damage * level) * game.damageBoost, type: tower.type, aoeRadius: c.aoeRadius || 0 });
+                }
+            }
+        }
+
+        function updateProjectiles() {
+            for (let i = game.projectiles.length - 1; i >= 0; i--) {
+                const p = game.projectiles[i];
+                const dx = p.targetX - p.x; const dy = p.targetY - p.y; const dist = Math.hypot(dx, dy);
+                if (dist < 0.1) {
+                    if (p.aoeRadius > 0) {
+                        for (const e of game.enemies) {
+                            if (Math.hypot(e.x - p.targetX, e.y - p.targetY) <= p.aoeRadius) e.health -= p.damage;
+                        }
+                    } else {
+                        for (const e of game.enemies) {
+                            if (Math.hypot(e.x - p.targetX, e.y - p.targetY) < 0.5) e.health -= p.damage;
+                        }
+                    }
+                    game.projectiles.splice(i, 1);
+                    continue;
+                }
+                const move = p.speed * (1 / 60);
+                p.x += (dx / dist) * move;
+                p.y += (dy / dist) * move;
+            }
+        }
+
+        function updateProps(dt) {
+            for (let i = game.props.length - 1; i >= 0; i--) {
+                const p = game.props[i];
+                p.timer += dt;
+                if (p.timer > 10) game.props.splice(i, 1);
+            }
+        }
+
+        function updateCoins(dt) {
+            for (let i = game.coins.length - 1; i >= 0; i--) {
+                const coin = game.coins[i];
+                coin.timer += dt;
+                if (coin.timer > 2) { game.coins.splice(i, 1); continue; }
+                const dx = (1 * gridSize) - coin.x * gridSize;
+                const dy = (1 * gridSize) - coin.y * gridSize;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 10) {
+                    coin.x += (dx / dist) * 0.5 * dt;
+                    coin.y += (dy / dist) * 0.5 * dt;
+                } else {
+                    game.coins.splice(i, 1);
+                }
+            }
+        }
+
+        function checkDeaths() {
+            for (let i = game.enemies.length - 1; i >= 0; i--) {
+                if (game.enemies[i].health <= 0) {
+                    const e = game.enemies[i];
+                    const comboBonus = Math.floor(game.combo * 2);
+                    const multiplier = 1 + Math.floor(game.combo / 5) * 0.2;
+                    const reward = Math.floor((e.gold + comboBonus) * multiplier);
+                    game.gold += reward;
+                    game.score += Math.floor(reward * 3);
+                    game.combo += 1;
+                    game.coins.push({ x: e.x, y: e.y, scale: 1, scaleSpeed: 0.02, timer: 0, value: reward });
+                    game.enemies.splice(i, 1);
+                    updateUI();
+                }
+            }
+        }
+
+        function pickProp(gx, gy) {
+            for (let i = game.props.length - 1; i >= 0; i--) {
+                const p = game.props[i];
+                if (p.x === gx && p.y === gy) {
+                    if (p.type === 'gold') game.gold += propTypes.gold.value;
+                    if (p.type === 'hp') game.hp += propTypes.hp.value;
+                    if (p.type === 'damage') game.damageBoost += propTypes.damage.value;
+                    game.props.splice(i, 1);
+                    updateUI();
+                    return;
+                }
+            }
+        }
+
+        function updateSkillCooldowns(dt) {
+            Object.keys(game.skillCooldowns).forEach(skill => {
+                if (game.skillCooldowns[skill] > 0) {
+                    game.skillCooldowns[skill] = Math.max(0, game.skillCooldowns[skill] - dt);
+                }
+            });
+        }
+
+        function useSkill(skillType) {
+            if (game.gameOver) return;
+            if ((game.skillCooldowns[skillType] || 0) > 0) return;
+            const def = skillDefs[skillType];
+            if (skillType === 'freeze') {
+                for (const enemy of game.enemies) enemy.slowTimer = Math.max(enemy.slowTimer, def.duration);
+                game.skillCooldowns[skillType] = def.cooldown;
+            } else if (skillType === 'bomb') {
+                for (const enemy of game.enemies) {
+                    enemy.health -= def.damage;
+                }
+                game.skillCooldowns[skillType] = def.cooldown;
+            } else if (skillType === 'boost') {
+                game.gold += def.gold;
+                game.damageBoost += 0.15;
+                game.skillCooldowns[skillType] = def.cooldown;
+            }
+            updateUI();
+        }
+
+        function placeTower(gx, gy) {
+            if (!game.selected) return;
+            const cfg = towerTypes[game.selected];
+            if (game.gold < cfg.cost) return;
+            const path = levelConfigs[game.level - 1].path;
+            if (path.some(p => p.x === gx && p.y === gy) || game.towers.some(t => t.x === gx && t.y === gy)) return;
+            game.towers.push({ x: gx, y: gy, type: game.selected, cooldown: 0, level: 1 });
+            game.gold -= cfg.cost;
+            game.selected = null;
+            updateUI();
+            ui.towerButtons.forEach(btn => btn.classList.remove('selected'));
+        }
+
+        function upgradeTower(gx, gy) {
+            for (const tower of game.towers) {
+                if (tower.x === gx && tower.y === gy) {
+                    const level = tower.level || 1;
+                    if (level >= 3) return;
+                    const cost = Math.floor(towerTypes[tower.type].cost * 1.5 * level);
+                    if (game.gold < cost) {
+                        alert(`升级需要${cost}金币，当前金币不足！`);
+                        return;
+                    }
+                    game.gold -= cost;
+                    tower.level = level + 1;
+                    updateUI();
+                    return;
+                }
+            }
+        }
+
+        function resetGame() {
+            resetLevelState();
+            game.gold = 50; game.hp = 10; game.selected = null; game.towers = []; game.enemies = []; game.projectiles = []; game.coins = []; game.props = []; game.gameOver = false; game.time = 0; game.waveIndex = 0; game.waveTimer = 0; game.damageBoost = 1; game.combo = 0; game.score = 0; game.skillCooldowns = { freeze: 0, bomb: 0, boost: 0 }; game.mouse = null; game.last = 0;
+            ui.gameOver.style.display = 'none';
+            updateUI();
+            if (game.animId) cancelAnimationFrame(game.animId);
+            game.animId = requestAnimationFrame(loop);
+        }
+
+        function restartGame() {
+            resetGame();
+        }
+
+        window.restartGame = restartGame;
+
+        function changeLevel(offset) {
+            const next = game.level + offset;
+            if (next < 1 || next > levelConfigs.length) return;
+            game.level = next;
+            resetGame();
+        }
+
+        function loop(ts) {
+            if (game.gameOver) return;
+            const dt = (ts - game.last) / 1000 || 0.016;
+            game.last = ts;
+            game.time += dt;
+            updateSkillCooldowns(dt);
+            spawnWave(dt);
+            spawnProp(dt);
+            updateEnemies(dt);
+            updateTowers(dt);
+            updateProjectiles();
+            updateProps(dt);
+            updateCoins(dt);
+            checkDeaths();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            game.towers.forEach(drawTower);
+            game.enemies.forEach(drawEnemy);
+            game.projectiles.forEach(drawProjectile);
+            game.coins.forEach(drawCoin);
+            game.props.forEach(drawProp);
+            drawPreview();
+            if (!game.gameOver) game.animId = requestAnimationFrame(loop);
+        }
+
+        ui.towerButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (game.gold < Number(btn.dataset.cost)) return;
+                game.selected = btn.dataset.type;
+                ui.towerButtons.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+            });
+        });
+
+        ui.skillButtons.forEach(btn => {
+            btn.addEventListener('click', () => useSkill(btn.dataset.skill));
+        });
+
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            game.mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        });
+
+        canvas.addEventListener('click', e => {
+            const rect = canvas.getBoundingClientRect();
+            const gx = Math.floor((e.clientX - rect.left) / gridSize);
+            const gy = Math.floor((e.clientY - rect.top) / gridSize);
+            pickProp(gx, gy);
+            placeTower(gx, gy);
+        });
+
+        canvas.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const gx = Math.floor((e.clientX - rect.left) / gridSize);
+            const gy = Math.floor((e.clientY - rect.top) / gridSize);
+            upgradeTower(gx, gy);
+        });
+
+        ui.prevLevel.addEventListener('click', () => changeLevel(-1));
+        ui.nextLevel.addEventListener('click', () => changeLevel(1));
+        ui.restart.addEventListener('click', resetGame);
+
+        resetGame();
+    </script>
+</body>
+</html>

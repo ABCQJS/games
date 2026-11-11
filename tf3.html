@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>20关升级版经典塔防游戏</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        body {
+            display: flex; flex-direction: column; align-items: center;
+            background: #1a1a2e; color: white; padding: 20px;
+        }
+        #gameCanvas {
+            border: 3px solid #4CAF50; background: #2c3e50; border-radius: 8px;
+            display: block; box-shadow: 0 0 18px rgba(76,175,80,.35);
+        }
+        .game-info, .status-bar {
+            width: 800px; display: flex; justify-content: space-between;
+            margin-bottom: 10px; font-size: 18px;
+        }
+        .status-bar {
+            background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px; padding: 10px 18px; margin-top: 8px;
+        }
+        .tower-shop, .level-panel, .skill-panel, .extra-panel {
+            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px;
+        }
+        .tower-btn, .level-btn, .skill-btn, .extra-btn, .game-over button {
+            border: none; border-radius: 5px; color: white; cursor: pointer;
+        }
+        .tower-btn, .skill-btn, .extra-btn {
+            padding: 10px 20px; font-size: 16px; transition: .2s;
+        }
+        .tower-btn {
+            background: #3498db;
+        }
+        .tower-btn:hover, .skill-btn:hover, .extra-btn:hover { transform: scale(1.05); }
+        .tower-btn.selected { border: 3px solid #f1c40f; }
+        .tower-btn.disabled { background: #7f8c8d; cursor: not-allowed; }
+        .skill-btn {
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+        }
+        .skill-btn.cooldown {
+            background: linear-gradient(135deg, #5b6476, #7a8194);
+            cursor: not-allowed;
+            opacity: 0.75;
+        }
+        .level-btn {
+            padding: 8px 16px; background: #27ae60;
+        }
+        .level-btn:disabled { background: #95a5a6; cursor: not-allowed; }
+        .extra-btn {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+        }
+        .extra-btn.primary {
+            background: linear-gradient(135deg, #16a085, #1abc9c);
+        }
+        .event-panel {
+            width: 800px; margin-top: 12px; padding: 10px 18px;
+            background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px; color: #dfeefb; font-size: 14px;
+        }
+        #eventLog {
+            color: #ffd166; margin-left: 8px;
+        }
+        .game-over {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,.8); padding: 40px; border-radius: 10px;
+            text-align: center; font-size: 24px; display: none;
+        }
+        .game-over button {
+            margin-top: 20px; padding: 10px 20px; background: #e74c3c; font-size: 18px;
+        }
+        .upgrade-tip {
+            margin-top: 10px; font-size: 14px; color: #f1c40f;
+        }
+        .level-tip {
+            margin-top: 5px; font-size: 13px; color: #90caf9;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-info">
+        <div>金币: <span id="gold">50</span></div>
+        <div>生命值: <span id="hp">10</span></div>
+        <div>关卡: <span id="currentLevel">1</span>/20</div>
+    </div>
+    <div class="status-bar">
+        <div>连杀: <span id="combo">0</span></div>
+        <div>积分: <span id="score">0</span></div>
+        <div>最高: <span id="bestScore">0</span></div>
+        <div>收益倍数: <span id="multiplier">1.0x</span></div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div class="tower-shop">
+        <button class="tower-btn" data-type="basic" data-cost="20">基础塔 (20)</button>
+        <button class="tower-btn" data-type="sniper" data-cost="50">狙击塔 (50)</button>
+        <button class="tower-btn" data-type="aoe" data-cost="80">范围塔 (80)</button>
+        <button class="tower-btn" data-type="slow" data-cost="60">减速塔 (60)</button>
+        <button class="tower-btn" data-type="poison" data-cost="90">毒伤塔 (90)</button>
+        <button class="tower-btn" data-type="cannon" data-cost="120">炮塔 (120)</button>
+        <button class="tower-btn" data-type="healer" data-cost="110">治愈塔 (110)</button>
+        <button class="tower-btn" data-type="laser" data-cost="150">激光塔 (150)</button>
+        <button class="tower-btn" data-type="nova" data-cost="180">星霜塔 (180)</button>
+        <button class="tower-btn" data-type="storm" data-cost="170">风暴塔 (170)</button>
+        <button class="tower-btn" data-type="frost" data-cost="190">冰霜塔 (190)</button>
+        <button class="tower-btn" data-type="prism" data-cost="220">棱镜塔 (220)</button>
+        <button class="tower-btn" data-type="sentinel" data-cost="240">哨戒塔 (240)</button>
+        <button class="tower-btn" data-type="meteor" data-cost="260">陨石塔 (260)</button>
+        <button class="tower-btn" data-type="arc" data-cost="280">电弧塔 (280)</button>
+        <button class="tower-btn" data-type="ember" data-cost="300">余烬塔 (300)</button>
+        <button class="tower-btn" data-type="phoenix" data-cost="340">凤凰塔 (340)</button>
+        <button class="tower-btn" data-type="guardian" data-cost="380">守护塔 (380)</button>
+        <button class="tower-btn" data-type="thunder" data-cost="420">雷霆塔 (420)</button>
+        <button class="tower-btn" data-type="comet" data-cost="460">彗星塔 (460)</button>
+        <button class="tower-btn" data-type="starfall" data-cost="500">流星塔 (500)</button>
+        <button class="tower-btn" data-type="abyss" data-cost="560">深渊塔 (560)</button>
+    </div>
+
+    <div class="skill-panel">
+        <button class="skill-btn" data-skill="freeze">冰封（12s）</button>
+        <button class="skill-btn" data-skill="bomb">爆裂（18s）</button>
+        <button class="skill-btn" data-skill="boost">补给（14s）</button>
+        <button class="skill-btn" data-skill="burst">冲击波（20s）</button>
+    </div>
+
+    <div class="extra-panel">
+        <button class="extra-btn primary" id="pauseBtn">暂停</button>
+        <button class="extra-btn" id="sellTowerBtn">卖出塔</button>
+        <button class="extra-btn" id="triggerEventBtn">随机事件</button>
+    </div>
+    
+    <div class="level-panel">
+        <button class="level-btn" id="prevLevel" disabled>上一关</button>
+        <button class="level-btn" id="nextLevel">下一关</button>
+        <button class="level-btn" id="restart">重新开始</button>
+    </div>
+
+    <div class="event-panel"><span>事件:</span><span id="eventLog">正常开局，准备防守</span></div>
+
+    <div class="upgrade-tip">提示1：右键点击已放置的塔可升级（消耗当前塔造价的1.5倍，最高3级）</div>
+    <div class="level-tip">提示2：关卡越高，敌人越强、道具生成概率越高，通关难度递增；随机事件会时不时给你惊喜和麻烦</div>
+    
+    <div class="game-over" id="gameOver">
+        <div id="gameOverText"></div>
+        <button onclick="restartGame()">重新开始</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridSize = 40;
+        const towerTypes = {
+            basic: { color: '#4CAF50', range: 3, damage: 10, fireRate: 1, cost: 20 },
+            sniper: { color: '#9C27B0', range: 6, damage: 50, fireRate: 2, cost: 50 },
+            aoe: { color: '#FF9800', range: 2, damage: 15, fireRate: 1.5, cost: 80, aoeRadius: 1 },
+            slow: { color: '#2196F3', range: 4, slowDuration: 2, fireRate: 1.2, cost: 60 },
+            poison: { color: '#4CAF50', range: 3, damage: 5, poisonDamage: 2, poisonDuration: 3, fireRate: 1, cost: 90 },
+            cannon: { color: '#FF5722', range: 3.2, damage: 35, fireRate: 1.6, cost: 120, aoeRadius: 1.5 },
+            healer: { color: '#26a69a', range: 2.7, heal: 6, fireRate: 0.9, cost: 110 },
+            laser: { color: '#00e5ff', range: 5.4, damage: 80, fireRate: 1.8, cost: 150 },
+            nova: { color: '#fdd835', range: 2.8, damage: 30, fireRate: 1.4, cost: 180, aoeRadius: 2.2 },
+            storm: { color: '#00BCD4', range: 4.5, damage: 45, fireRate: 1.5, cost: 170, aoeRadius: 1.7 },
+            frost: { color: '#81D4FA', range: 4.2, damage: 24, fireRate: 1.1, cost: 190, slowDuration: 3 },
+            prism: { color: '#7E57C2', range: 5.8, damage: 75, fireRate: 2, cost: 220 },
+            sentinel: { color: '#B39DDB', range: 3.7, damage: 35, fireRate: 1, cost: 240 },
+            meteor: { color: '#FF7043', range: 4.8, damage: 82, fireRate: 1.4, cost: 260, aoeRadius: 2.2 },
+            arc: { color: '#29B6F6', range: 6.3, damage: 96, fireRate: 2.3, cost: 280 },
+            ember: { color: '#FFB74D', range: 4.1, damage: 58, fireRate: 1.3, cost: 300, aoeRadius: 1.9 },
+            phoenix: { color: '#F9A825', range: 5.1, damage: 88, fireRate: 1.7, cost: 340, heal: 10 },
+            guardian: { color: '#66BB6A', range: 3.2, damage: 40, fireRate: 0.9, cost: 380, heal: 14 },
+            thunder: { color: '#FFEB3B', range: 6.4, damage: 120, fireRate: 2.4, cost: 420 },
+            comet: { color: '#E1BEE7', range: 5.5, damage: 110, fireRate: 1.8, cost: 460, aoeRadius: 2.5 },
+            starfall: { color: '#9C27B0', range: 5.7, damage: 130, fireRate: 2.1, cost: 500, aoeRadius: 2.8 },
+            abyss: { color: '#1E1E1E', range: 6.5, damage: 150, fireRate: 2.6, cost: 560, aoeRadius: 3.1 }
+        };
+        const enemyTypes = {
+            basic: { color: '#F44336', health: 50, speed: 0.5, gold: 5 },
+            fast: { color: '#2196F3', health: 30, speed: 1, gold: 8 },
+            tank: { color: '#795548', health: 200, speed: 0.2, gold: 15 },
+            elite: { color: '#E91E63', health: 100, speed: 0.7, gold: 20 },
+            boss: { color: '#000000', health: 500, speed: 0.3, gold: 50 }
+        };
+        const propTypes = {
+            gold: { color: '#FFD700', value: 20, text: '+20金币' },
+            hp: { color: '#FF4444', value: 5, text: '+5生命值' },
+            damage: { color: '#FF8800', value: 0.2, text: '伤害+20%' }
+        };
+
+        const game = {
+            gold: 50,
+            hp: 10,
+            level: 1,
+            selected: null,
+            selectedTower: null,
+            towers: [],
+            enemies: [],
+            projectiles: [],
+            coins: [],
+            props: [],
+            gameOver: false,
+            paused: false,
+            time: 0,
+            waveIndex: 0,
+            waveTimer: 0,
+            damageBoost: 1,
+            combo: 0,
+            score: 0,
+            bestScore: 0,
+            bestLevel: 1,
+            eventTimer: 18,
+            skillCooldowns: { freeze: 0, bomb: 0, boost: 0, burst: 0 },
+            mouse: null,
+            animId: null,
+            last: 0
+        };
+
+        const ui = {
+            gold: document.getElementById('gold'),
+            hp: document.getElementById('hp'),
+            level: document.getElementById('currentLevel'),
+            combo: document.getElementById('combo'),
+            score: document.getElementById('score'),
+            bestScore: document.getElementById('bestScore'),
+            multiplier: document.getElementById('multiplier'),
+            gameOver: document.getElementById('gameOver'),
+            gameOverText: document.getElementById('gameOverText'),
+            eventLog: document.getElementById('eventLog'),
+            towerButtons: [...document.querySelectorAll('.tower-btn')],
+            skillButtons: [...document.querySelectorAll('.skill-btn')],
+            pauseBtn: document.getElementById('pauseBtn'),
+            sellTowerBtn: document.getElementById('sellTowerBtn'),
+            triggerEventBtn: document.getElementById('triggerEventBtn'),
+            prevLevel: document.getElementById('prevLevel'),
+            nextLevel: document.getElementById('nextLevel'),
+            restart: document.getElementById('restart')
+        };
+
+        const skillDefs = {
+            freeze: { cooldown: 12, name: '冰封', duration: 4 },
+            bomb: { cooldown: 18, name: '爆裂', damage: 120 },
+            boost: { cooldown: 14, name: '补给', gold: 25 },
+            burst: { cooldown: 20, name: '冲击波', damage: 90, duration: 1.5 }
+        };
+
+        const towerUnlocks = {
+            basic: 1,
+            sniper: 2,
+            aoe: 2,
+            slow: 3,
+            poison: 4,
+            cannon: 5,
+            healer: 3,
+            laser: 6,
+            nova: 7,
+            storm: 8,
+            frost: 9,
+            prism: 10,
+            sentinel: 11,
+            meteor: 12,
+            arc: 13,
+            ember: 14,
+            phoenix: 15,
+            guardian: 16,
+            thunder: 17,
+            comet: 18,
+            starfall: 19,
+            abyss: 20
+        };
+
+        const towerNames = {
+            basic: '基础塔',
+            sniper: '狙击塔',
+            aoe: '范围塔',
+            slow: '减速塔',
+            poison: '毒伤塔',
+            cannon: '炮塔',
+            healer: '治愈塔',
+            laser: '激光塔',
+            nova: '星霜塔',
+            storm: '风暴塔',
+            frost: '冰霜塔',
+            prism: '棱镜塔',
+            sentinel: '哨戒塔',
+            meteor: '陨石塔',
+            arc: '电弧塔',
+            ember: '余烬塔',
+            phoenix: '凤凰塔',
+            guardian: '守护塔',
+            thunder: '雷霆塔',
+            comet: '彗星塔',
+            starfall: '流星塔',
+            abyss: '深渊塔'
+        };
+
+        const towerDescriptions = {
+            basic: '稳定近战输出，适合起步防守。',
+            sniper: '远程高爆发，优先击杀高血量敌人。',
+            aoe: '攻击范围较小但能群体打击。',
+            slow: '减缓敌人速度，方便铺开阵型。',
+            poison: '持续中毒，适合拖住大波敌人。',
+            cannon: '轰炸型远程塔，爆发力很强。',
+            healer: '为防守阵型提供持续回复与支援。',
+            laser: '高伤害激光塔，打击精英敌人很有用。',
+            nova: '大范围爆炸塔，适合大规模清场。',
+            storm: '风暴连续打击，清理密集敌群。',
+            frost: '冰冻敌人、减速并控制节奏。',
+            prism: '聚焦光束，精确压制关键目标。',
+            sentinel: '稳定输出，擅长守点和补刀。',
+            meteor: '强力落点打击，适合Boss前收尾。',
+            arc: '高速电弧，破坏力极强。',
+            ember: '灼烧区域，对群体敌人很有效。',
+            phoenix: '终极支援塔，具备高伤害与恢复。',
+            guardian: '能稳住阵线并提供持续支援。',
+            thunder: '雷电贯穿战场，击杀后排威胁。',
+            comet: '高速陨击，打击大群敌人。',
+            starfall: '极限爆发，适合高难度收尾。',
+            abyss: '终极压制塔，属于后期主力输出。'
+        };
+
+        const eventTemplates = [
+            { label: '金币雨', apply: () => { game.gold += 35; return '金币雨：获得 35 金币'; } },
+            { label: '修理站', apply: () => { game.hp += 2; return '修理站：生命 +2'; } },
+            { label: '裂风', apply: () => { for (const enemy of game.enemies) enemy.health -= 35; return '裂风：所有敌人受到 35 点伤害'; } },
+            { label: '强化药剂', apply: () => { game.damageBoost += 0.1; return '强化药剂：伤害 +10%'; } },
+            { label: '补给车', apply: () => { game.gold += 25; game.hp += 1; return '补给车：金币 +25，生命 +1'; } }
+        ];
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function shade(hex, amount) {
+            hex = hex.replace('#', '');
+            let num = parseInt(hex, 16);
+            let r = (num >> 16) + amount;
+            let g = ((num >> 8) & 0x00FF) + amount;
+            let b = (num & 0x0000FF) + amount;
+            r = clamp(r, 0, 255);
+            g = clamp(g, 0, 255);
+            b = clamp(b, 0, 255);
+            return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+        }
+
+        function makeRandomPath(seed) {
+            const path = [{ x: 0, y: Math.floor(Math.random() * 8) + 2 }];
+            let x = 0;
+            let y = path[0].y;
+            while (x < 19) {
+                x++;
+                if (Math.random() < 0.35 && y > 2 && y < 12) {
+                    y += Math.random() < 0.5 ? 1 : -1;
+                }
+                if (Math.random() < 0.15) {
+                    y += Math.random() < 0.5 ? 1 : -1;
+                }
+                y = clamp(y, 2, 12);
+                path.push({ x, y });
+            }
+            path.push({ x: 19, y: y });
+            return path;
+        }
+
+        function buildLevel(path, index) {
+            const level = index + 1;
+            const waveCount = Math.min(5 + Math.floor(level / 2), 12);
+            const waves = [];
+            const strength = 1 + level * 0.1;
+            const enemyCountMulti = 1 + level * 0.2;
+            const spawnRate = Math.max(0.3, 1 - level * 0.03);
+            for (let i = 0; i < waveCount; i++) {
+                let type = 'basic';
+                if (i >= waveCount - 1 && level >= 2) type = 'boss';
+                else if (i >= waveCount - 3 && level >= 5) type = 'elite';
+                else if (i >= waveCount - 5 && level >= 3) type = 'tank';
+                else if (i >= waveCount - 4 && level >= 2) type = 'fast';
+                waves.push({ time: i * 8 + 1, count: Math.floor((5 + i * 3) * enemyCountMulti), type });
+            }
+            return { path, enemyWaves: waves, enemySpawnRate: spawnRate, propSpawnRate: Math.min(0.01, 0.002 + level * 0.0004), enemyStrengthMultiplier: strength };
+        }
+
+        const levelTemplates = [
+            [{ x: 0, y: 3 }, { x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 3, y: 4 }, { x: 3, y: 5 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 }, { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 7, y: 4 }, { x: 8, y: 4 }, { x: 9, y: 4 }, { x: 10, y: 4 }, { x: 10, y: 5 }, { x: 10, y: 6 }, { x: 10, y: 7 }, { x: 10, y: 8 }, { x: 11, y: 8 }, { x: 12, y: 8 }, { x: 13, y: 8 }, { x: 14, y: 8 }, { x: 15, y: 8 }, { x: 16, y: 8 }, { x: 17, y: 8 }, { x: 18, y: 8 }, { x: 19, y: 8 }],
+            [{ x: 0, y: 5 }, { x: 1, y: 5 }, { x: 2, y: 5 }, { x: 3, y: 5 }, { x: 3, y: 4 }, { x: 3, y: 3 }, { x: 4, y: 3 }, { x: 5, y: 3 }, { x: 6, y: 3 }, { x: 6, y: 4 }, { x: 6, y: 5 }, { x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }, { x: 9, y: 6 }, { x: 9, y: 7 }, { x: 8, y: 7 }, { x: 7, y: 7 }, { x: 6, y: 7 }, { x: 6, y: 8 }, { x: 6, y: 9 }, { x: 7, y: 9 }, { x: 8, y: 9 }, { x: 9, y: 9 }, { x: 10, y: 9 }, { x: 11, y: 9 }, { x: 12, y: 9 }, { x: 13, y: 9 }, { x: 14, y: 9 }, { x: 15, y: 9 }, { x: 16, y: 9 }, { x: 17, y: 9 }, { x: 18, y: 9 }, { x: 19, y: 9 }],
+            [{ x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }, { x: 3, y: 3 }, { x: 3, y: 4 }, { x: 4, y: 4 }, { x: 5, y: 4 }, { x: 5, y: 3 }, { x: 5, y: 2 }, { x: 6, y: 2 }, { x: 7, y: 2 }, { x: 7, y: 3 }, { x: 7, y: 4 }, { x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 6 }, { x: 10, y: 7 }, { x: 9, y: 7 }, { x: 8, y: 7 }, { x: 7, y: 7 }, { x: 6, y: 7 }, { x: 5, y: 7 }, { x: 4, y: 7 }, { x: 3, y: 7 }, { x: 2, y: 7 }, { x: 1, y: 7 }, { x: 0, y: 7 }, { x: 0, y: 8 }, { x: 0, y: 9 }, { x: 1, y: 9 }, { x: 2, y: 9 }, { x: 3, y: 9 }, { x: 4, y: 9 }, { x: 5, y: 9 }, { x: 6, y: 9 }, { x: 7, y: 9 }, { x: 8, y: 9 }, { x: 9, y: 9 }, { x: 10, y: 9 }, { x: 11, y: 9 }, { x: 12, y: 9 }, { x: 13, y: 9 }, { x: 14, y: 9 }, { x: 15, y: 9 }, { x: 16, y: 9 }, { x: 17, y: 9 }, { x: 18, y: 9 }, { x: 19, y: 9 }],
+            [{ x: 0, y: 6 }, { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 3, y: 7 }, { x: 3, y: 8 }, { x: 4, y: 8 }, { x: 5, y: 8 }, { x: 6, y: 8 }, { x: 7, y: 8 }, { x: 7, y: 7 }, { x: 7, y: 6 }, { x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 4 }, { x: 10, y: 3 }, { x: 11, y: 3 }, { x: 12, y: 3 }, { x: 13, y: 3 }, { x: 14, y: 3 }, { x: 14, y: 4 }, { x: 14, y: 5 }, { x: 15, y: 5 }, { x: 16, y: 5 }, { x: 17, y: 5 }, { x: 18, y: 5 }, { x: 19, y: 5 }],
+            [{ x: 0, y: 4 }, { x: 1, y: 4 }, { x: 2, y: 4 }, { x: 3, y: 4 }, { x: 3, y: 5 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 }, { x: 6, y: 7 }, { x: 6, y: 8 }, { x: 7, y: 8 }, { x: 8, y: 8 }, { x: 9, y: 8 }, { x: 10, y: 8 }, { x: 11, y: 8 }, { x: 11, y: 7 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 }, { x: 14, y: 6 }, { x: 15, y: 6 }, { x: 15, y: 5 }, { x: 15, y: 4 }, { x: 16, y: 4 }, { x: 17, y: 4 }, { x: 18, y: 4 }, { x: 19, y: 4 }]
+        ];
+
+        const baseLevelConfigs = Array.from({ length: 20 }, (_, i) => {
+            const path = i < levelTemplates.length ? levelTemplates[i] : makeRandomPath(i);
+            return buildLevel(path, i);
+        });
+        const levelConfigs = baseLevelConfigs.map(level => ({
+            ...level,
+            enemyWaves: level.enemyWaves.map(wave => ({ ...wave }))
+        }));
+
+        function resetLevelState() {
+            for (let i = 0; i < levelConfigs.length; i++) {
+                const base = baseLevelConfigs[i];
+                levelConfigs[i].enemyWaves = base.enemyWaves.map(wave => ({ ...wave }));
+            }
+        }
+
+        function loadProgress() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('tdGameProgress') || '{}');
+                game.bestScore = Number(saved.bestScore || 0);
+                game.bestLevel = Number(saved.bestLevel || 1);
+            } catch (error) {
+                game.bestScore = 0;
+                game.bestLevel = 1;
+            }
+        }
+
+        function saveProgress() {
+            try {
+                localStorage.setItem('tdGameProgress', JSON.stringify({
+                    bestScore: game.bestScore,
+                    bestLevel: game.bestLevel
+                }));
+            } catch (error) {
+                // 浏览器隐私模式下忽略
+            }
+        }
+
+        function setEventText(text) {
+            ui.eventLog.textContent = text;
+        }
+
+        function triggerRandomEvent() {
+            const event = eventTemplates[Math.floor(Math.random() * eventTemplates.length)];
+            const message = event.apply();
+            setEventText(message);
+            game.eventTimer = 18 + Math.random() * 12;
+            updateUI();
+        }
+
+        function togglePause() {
+            game.paused = !game.paused;
+            ui.pauseBtn.textContent = game.paused ? '继续' : '暂停';
+            setEventText(game.paused ? '战斗暂停，调整你的布阵' : '战斗继续，敌人重新进攻');
+        }
+
+        function getTowerAt(gx, gy) {
+            return game.towers.find(tower => tower.x === gx && tower.y === gy) || null;
+        }
+
+        function sellSelectedTower() {
+            const tower = game.selectedTower;
+            if (!tower) {
+                setEventText('请选择一座已放置的塔再卖出');
+                return;
+            }
+            const refund = Math.floor(towerTypes[tower.type].cost * 0.65 + (tower.level - 1) * 10);
+            game.gold += refund;
+            game.towers = game.towers.filter(item => !(item.x === tower.x && item.y === tower.y));
+            game.selectedTower = null;
+            setEventText(`卖出成功：返还 ${refund} 金币`);
+            updateUI();
+        }
+
+        function updateUI() {
+            if (game.score > game.bestScore) {
+                game.bestScore = game.score;
+                saveProgress();
+            }
+            if (game.level > game.bestLevel) {
+                game.bestLevel = game.level;
+                saveProgress();
+            }
+            ui.gold.textContent = game.gold;
+            ui.hp.textContent = game.hp;
+            ui.level.textContent = game.level;
+            ui.combo.textContent = game.combo;
+            ui.score.textContent = game.score;
+            ui.bestScore.textContent = game.bestScore;
+            ui.multiplier.textContent = (1 + Math.floor(game.combo / 5) * 0.2).toFixed(1) + 'x';
+            ui.prevLevel.disabled = game.level <= 1;
+            ui.nextLevel.disabled = game.level >= levelConfigs.length || game.gameOver;
+            ui.pauseBtn.textContent = game.paused ? '继续' : '暂停';
+            ui.towerButtons.forEach(btn => {
+                const type = btn.dataset.type;
+                const cost = Number(btn.dataset.cost);
+                const unlockLevel = towerUnlocks[type] || 1;
+                const unlocked = game.level >= unlockLevel;
+                btn.disabled = !unlocked;
+                btn.classList.toggle('disabled', !unlocked || game.gold < cost);
+                btn.title = unlocked ? `${towerNames[type]}：${towerDescriptions[type]}｜价格：${cost}` : `${towerNames[type]}：第 ${unlockLevel} 关解锁｜${towerDescriptions[type]}`;
+                btn.textContent = unlocked ? `${towerNames[type]} (${cost})` : `${towerNames[type]}（${unlockLevel}关）`;
+                if (!unlocked || game.gold < cost) btn.classList.remove('selected');
+            });
+            ui.skillButtons.forEach(btn => {
+                const skill = btn.dataset.skill;
+                const left = Math.max(0, game.skillCooldowns[skill] || 0);
+                const ready = left <= 0;
+                btn.classList.toggle('cooldown', !ready);
+                btn.textContent = ready ? `${skillDefs[skill].name}（${skillDefs[skill].cooldown}s）` : `${skillDefs[skill].name}（${left.toFixed(1)}s）`;
+            });
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#34495e'; ctx.lineWidth = 1;
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+            const path = levelConfigs[game.level - 1].path;
+            ctx.fillStyle = '#7f8c8d';
+            path.forEach(p => ctx.fillRect(p.x * gridSize, p.y * gridSize, gridSize, gridSize));
+            const end = path[path.length - 1];
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(end.x * gridSize, end.y * gridSize, gridSize, gridSize);
+        }
+
+        function getTowerTarget(tower) {
+            const c = towerTypes[tower.type];
+            const range = c.range + (tower.level - 1) * 0.5;
+            const targets = game.enemies.filter(e => Math.hypot(e.x - tower.x, e.y - tower.y) <= range);
+            if (!targets.length) return null;
+            if (tower.type === 'sniper' || tower.type === 'laser' || tower.type === 'arc' || tower.type === 'thunder') {
+                return targets.reduce((best, enemy) => enemy.health > best.health ? enemy : best);
+            }
+            if (tower.type === 'slow') return targets.reduce((best, enemy) => enemy.speed > best.speed ? enemy : best);
+            if (tower.type === 'poison') return targets.reduce((best, enemy) => enemy.health < best.health ? enemy : best);
+            if (tower.type === 'aoe' || tower.type === 'nova' || tower.type === 'storm' || tower.type === 'meteor' || tower.type === 'comet' || tower.type === 'ember' || tower.type === 'starfall') {
+                return targets[Math.floor(targets.length / 2)];
+            }
+            return targets[0];
+        }
+
+        function drawTower(tower) {
+            const c = towerTypes[tower.type];
+            const x = tower.x * gridSize + gridSize / 2;
+            const y = tower.y * gridSize + gridSize / 2;
+            const level = tower.level || 1;
+            const radius = gridSize / 3 + level * 2;
+            const pulse = 1 + Math.sin(game.time * (3 + level * 0.35) + tower.x * 2.1 + tower.y * 1.7) * 0.12;
+            const target = getTowerTarget(tower);
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(pulse, pulse);
+
+            switch (tower.type) {
+                case 'basic':
+                    ctx.fillStyle = shade(c.color, 10);
+                    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+                    ctx.beginPath(); ctx.arc(0, 0, radius * 0.8, 0, Math.PI * 2); ctx.stroke();
+                    ctx.fillStyle = '#dfffe0'; ctx.beginPath(); ctx.arc(radius * 0.2, -radius * 0.2, 4, 0, Math.PI * 2); ctx.fill();
+                    break;
+                case 'sniper':
+                    ctx.fillStyle = '#d7a7ff'; ctx.beginPath(); ctx.arc(0, 0, radius * 1.1, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#ffe082'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(radius * 1.8, 0); ctx.stroke();
+                    if (target) {
+                        const tx = (target.x - tower.x) * gridSize; const ty = (target.y - tower.y) * gridSize;
+                        ctx.strokeStyle = 'rgba(255, 224, 130, 0.9)';
+                        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke();
+                    }
+                    break;
+                case 'aoe':
+                    ctx.fillStyle = shade(c.color, -20); ctx.beginPath(); ctx.arc(0, 0, radius * 1.2, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,190,88,0.8)';
+                    for (let i = 0; i < 3; i++) {
+                        const ang = (Math.PI * 2 / 3) * i + game.time * 1.8;
+                        ctx.beginPath(); ctx.arc(0, 0, radius * (1.2 + i * 0.3), ang, ang + 1.2); ctx.stroke();
+                    }
+                    break;
+                case 'slow':
+                    ctx.fillStyle = '#7ec8ff'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    for (let i = 0; i < 5; i++) {
+                        const ang = (Math.PI * 2 / 5) * i + game.time * 2.2;
+                        const orbit = radius * 1.4;
+                        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                        ctx.beginPath(); ctx.arc(Math.cos(ang) * orbit, Math.sin(ang) * orbit, 3, 0, Math.PI * 2); ctx.fill();
+                    }
+                    break;
+                case 'poison':
+                    ctx.fillStyle = '#39d353'; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(170,255,180,0.7)';
+                    for (let i = 0; i < 6; i++) {
+                        const ang = game.time * 1.8 + i * (Math.PI / 3);
+                        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ang) * radius * 1.5, Math.sin(ang) * radius * 1.5); ctx.stroke();
+                    }
+                    break;
+                case 'cannon':
+                    ctx.fillStyle = '#ff8a65'; ctx.beginPath(); ctx.arc(0, 0, radius * 1.1, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(radius * 1.9, 0); ctx.lineTo(radius * 1.6, radius * 0.35); ctx.closePath(); ctx.fill();
+                    ctx.beginPath(); ctx.arc(radius * 1.4, 0, radius * 0.25, 0, Math.PI * 2); ctx.fill();
+                    break;
+                case 'healer':
+                    ctx.fillStyle = '#4dd0c8'; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(200,255,250,0.9)'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(0, 0, radius * 1.5, 0, Math.PI * 2); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(-radius * 0.8, 0); ctx.lineTo(radius * 0.8, 0); ctx.moveTo(0, -radius * 0.8); ctx.lineTo(0, radius * 0.8); ctx.stroke();
+                    break;
+                case 'laser':
+                    ctx.fillStyle = '#4fe0ff'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(120,240,255,0.9)'; ctx.lineWidth = 2.5;
+                    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(radius * 1.8, 0); ctx.stroke();
+                    if (target) {
+                        const tx = (target.x - tower.x) * gridSize; const ty = (target.y - tower.y) * gridSize;
+                        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke();
+                    }
+                    break;
+                case 'nova':
+                    ctx.fillStyle = '#ffe082'; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,242,154,0.8)';
+                    for (let i = 0; i < 8; i++) {
+                        const ang = game.time * 2.4 + i * (Math.PI / 4);
+                        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ang) * radius * 1.8, Math.sin(ang) * radius * 1.8); ctx.stroke();
+                    }
+                    break;
+                case 'storm':
+                    ctx.fillStyle = '#61d6ff'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.95, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(166,239,255,0.9)';
+                    for (let i = 0; i < 4; i++) {
+                        const ang = game.time * 2.7 + i * (Math.PI / 2);
+                        ctx.beginPath(); ctx.moveTo(Math.cos(ang) * radius * 0.8, Math.sin(ang) * radius * 0.8); ctx.lineTo(Math.cos(ang + 0.6) * radius * 1.6, Math.sin(ang + 0.6) * radius * 1.6); ctx.stroke();
+                    }
+                    break;
+                case 'frost':
+                    ctx.fillStyle = '#b9ecff'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                    for (let i = 0; i < 6; i++) {
+                        const ang = i * (Math.PI / 3) + game.time * 1.9;
+                        ctx.beginPath(); ctx.moveTo(Math.cos(ang) * radius * 1.2, Math.sin(ang) * radius * 1.2); ctx.lineTo(Math.cos(ang + 0.2) * radius * 1.8, Math.sin(ang + 0.2) * radius * 1.8); ctx.stroke();
+                    }
+                    break;
+                case 'prism':
+                    ctx.fillStyle = '#b39ddb'; ctx.beginPath(); ctx.moveTo(0, -radius * 1.2); ctx.lineTo(radius * 1.2, 0); ctx.lineTo(0, radius * 1.2); ctx.lineTo(-radius * 1.2, 0); ctx.closePath(); ctx.fill();
+                    ctx.strokeStyle = '#f3e5ff'; ctx.lineWidth = 2;
+                    for (let i = 0; i < 4; i++) {
+                        const ang = game.time * 2.1 + i * (Math.PI / 2);
+                        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ang) * radius * 1.8, Math.sin(ang) * radius * 1.8); ctx.stroke();
+                    }
+                    break;
+                case 'sentinel':
+                    ctx.fillStyle = '#d1c4e9'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 245, 134, 0.8)';
+                    for (let i = 0; i < 6; i++) {
+                        const ang = i * (Math.PI / 3) + game.time * 2.2;
+                        ctx.beginPath(); ctx.moveTo(Math.cos(ang) * radius * 0.8, Math.sin(ang) * radius * 0.8); ctx.lineTo(Math.cos(ang) * radius * 1.7, Math.sin(ang) * radius * 1.7); ctx.stroke();
+                    }
+                    break;
+                case 'meteor':
+                    ctx.fillStyle = '#ffab91'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,190,100,0.8)';
+                    ctx.beginPath(); ctx.moveTo(-radius * 1.2, 0); ctx.lineTo(radius * 1.8, 0); ctx.stroke();
+                    ctx.fillStyle = '#ffd54f'; ctx.beginPath(); ctx.arc(radius * 1.8, 0, 5, 0, Math.PI * 2); ctx.fill();
+                    break;
+                case 'arc':
+                    ctx.fillStyle = '#7ad7ff'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#dff9ff'; ctx.lineWidth = 2;
+                    const zigZag = [0, 0.8, 1.6, 0.9, 2.1];
+                    ctx.beginPath(); ctx.moveTo(-radius * 1.4, 0);
+                    for (let i = 0; i < zigZag.length; i++) {
+                        const xOff = -radius * 1.4 + i * (radius * 0.7);
+                        const yOff = (i % 2 === 0 ? -1 : 1) * radius * 0.7;
+                        ctx.lineTo(xOff, yOff);
+                    }
+                    ctx.lineTo(radius * 1.8, 0); ctx.stroke();
+                    break;
+                case 'ember':
+                    ctx.fillStyle = '#ffb74d'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,150,60,0.9)';
+                    for (let i = 0; i < 8; i++) {
+                        const ang = game.time * 2.8 + i * (Math.PI / 4);
+                        const len = radius * (1.1 + (i % 2) * 0.5);
+                        ctx.beginPath(); ctx.moveTo(Math.cos(ang) * radius * 0.5, Math.sin(ang) * radius * 0.5); ctx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len); ctx.stroke();
+                    }
+                    break;
+                case 'phoenix':
+                    ctx.fillStyle = '#ffca28'; ctx.beginPath(); ctx.arc(0, 0, radius * 1.1, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,245,160,0.9)';
+                    for (let i = 0; i < 7; i++) {
+                        const ang = game.time * 2.0 + i * (Math.PI / 3.5);
+                        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ang) * radius * 1.8, Math.sin(ang) * radius * 1.8); ctx.stroke();
+                    }
+                    break;
+                case 'guardian':
+                    ctx.fillStyle = '#a5d6a7'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(220,255,197,0.9)';
+                    ctx.beginPath(); ctx.arc(0, 0, radius * 1.5, 0, Math.PI * 2); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, -radius * 1.4); ctx.lineTo(radius * 0.8, 0); ctx.lineTo(0, radius * 1.4); ctx.lineTo(-radius * 0.8, 0); ctx.closePath(); ctx.stroke();
+                    break;
+                case 'thunder':
+                    ctx.fillStyle = '#fff176'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.8, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,200,0.9)'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(-radius * 0.4, -radius * 1.1); ctx.lineTo(radius * 0.2, -radius * 0.2); ctx.lineTo(-radius * 0.1, radius * 0.2); ctx.lineTo(radius * 0.5, radius * 1.1); ctx.stroke();
+                    break;
+                case 'comet':
+                    ctx.fillStyle = '#e1bee7'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#f5d0ff'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(-radius * 1.8, 0); ctx.lineTo(radius * 1.9, 0); ctx.stroke();
+                    ctx.fillStyle = '#f8bbd0'; ctx.beginPath(); ctx.arc(radius * 1.9, 0, 5, 0, Math.PI * 2); ctx.fill();
+                    break;
+                case 'starfall':
+                    ctx.fillStyle = '#d7a7ff'; ctx.beginPath(); ctx.arc(0, 0, radius * 1.1, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,220,255,0.9)';
+                    for (let i = 0; i < 6; i++) {
+                        const ang = game.time * 2.8 + i * (Math.PI / 3);
+                        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ang) * radius * 1.9, Math.sin(ang) * radius * 1.9); ctx.stroke();
+                    }
+                    break;
+                case 'abyss':
+                    ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(0, 0, radius * 0.95, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(152,108,255,0.9)';
+                    ctx.beginPath(); ctx.arc(0, 0, radius * 1.8, 0, Math.PI * 2); ctx.stroke();
+                    for (let i = 0; i < 8; i++) {
+                        const ang = game.time * 1.7 + i * (Math.PI / 4);
+                        ctx.beginPath(); ctx.moveTo(Math.cos(ang) * radius * 1.1, Math.sin(ang) * radius * 1.1); ctx.lineTo(Math.cos(ang) * radius * 2.1, Math.sin(ang) * radius * 2.1); ctx.stroke();
+                    }
+                    break;
+                default:
+                    ctx.fillStyle = c.color; ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+                    break;
+            }
+            ctx.restore();
+
+            const rangeColor = target ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)';
+            ctx.strokeStyle = rangeColor;
+            ctx.beginPath(); ctx.arc(x, y, (c.range + (level - 1) * 0.5) * gridSize, 0, Math.PI * 2); ctx.stroke();
+            if (tower.cooldown > 0) {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.arc(x, y, radius, -Math.PI / 2, -Math.PI / 2 + (tower.cooldown / (c.fireRate / ((level || 1) * 0.5))) * Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
+            ctx.fillText('Lv' + level, x, y + 5);
+        }
+
+        function drawEnemy(enemy) {
+            const cfg = enemyTypes[enemy.type];
+            const x = enemy.x * gridSize + gridSize / 2;
+            const y = enemy.y * gridSize + gridSize / 2;
+            ctx.fillStyle = enemy.slowTimer > 0 ? '#AAAAAA' : cfg.color;
+            ctx.fillRect(x - gridSize / 4, y - gridSize / 4, gridSize / 2, gridSize / 2);
+            if (enemy.poisonTimer > 0) {
+                ctx.fillStyle = 'rgba(0,255,0,0.5)';
+                ctx.beginPath(); ctx.arc(x, y, gridSize / 3, 0, Math.PI * 2); ctx.fill();
+            }
+            const max = cfg.health * levelConfigs[game.level - 1].enemyStrengthMultiplier;
+            ctx.fillStyle = '#e74c3c'; ctx.fillRect(x - gridSize / 4, y - gridSize / 2 - 5, gridSize / 2, 5);
+            ctx.fillStyle = '#2ecc71'; ctx.fillRect(x - gridSize / 4, y - gridSize / 2 - 5, (gridSize / 2) * (enemy.health / max), 5);
+            if (levelConfigs[game.level - 1].enemyStrengthMultiplier > 1) {
+                ctx.fillStyle = 'yellow'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('+' + Math.floor((levelConfigs[game.level - 1].enemyStrengthMultiplier - 1) * 100) + '%', x, y + gridSize / 2 + 10);
+            }
+        }
+
+        function drawProjectile(proj) {
+            const px = proj.x * gridSize; const py = proj.y * gridSize;
+            ctx.save();
+            switch (proj.type) {
+                case 'basic':
+                    ctx.fillStyle = '#c8f7c5'; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+                    break;
+                case 'sniper':
+                    ctx.strokeStyle = '#ffd54f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px - 6, py); ctx.lineTo(px + 6, py); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fillStyle = '#f5dd4b'; ctx.fill();
+                    break;
+                case 'aoe':
+                    ctx.fillStyle = '#ffb74d'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#ffe0b2'; ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+                    break;
+                case 'slow':
+                    ctx.fillStyle = '#7ec8ff'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#dfefff'; ctx.beginPath(); ctx.moveTo(px - 7, py); ctx.lineTo(px + 7, py); ctx.stroke();
+                    break;
+                case 'poison':
+                    ctx.fillStyle = '#66bb6a'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#b7f7bd'; ctx.beginPath(); ctx.arc(px, py, 9, 0, Math.PI * 2); ctx.stroke();
+                    break;
+                case 'cannon':
+                    ctx.fillStyle = '#ff8a65'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ffd180'; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + 10, py); ctx.lineTo(px + 5, py - 5); ctx.closePath(); ctx.fill();
+                    break;
+                case 'healer':
+                    ctx.fillStyle = '#4dd0c8'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#dffcfb'; ctx.beginPath(); ctx.moveTo(px - 6, py); ctx.lineTo(px + 6, py); ctx.moveTo(px, py - 6); ctx.lineTo(px, py + 6); ctx.stroke();
+                    break;
+                case 'laser':
+                    ctx.strokeStyle = '#66f3ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px - 8, py); ctx.lineTo(px + 8, py); ctx.stroke();
+                    ctx.fillStyle = '#ccfaff'; ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+                    break;
+                case 'nova':
+                    ctx.fillStyle = '#ffe082'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#fff8c5'; ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+                    break;
+                case 'storm':
+                    ctx.fillStyle = '#80deea'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#d8f9ff'; ctx.beginPath(); ctx.moveTo(px - 8, py - 2); ctx.lineTo(px, py + 8); ctx.lineTo(px + 8, py - 2); ctx.stroke();
+                    break;
+                case 'frost':
+                    ctx.fillStyle = '#b3e5fc'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#e1f5fe'; ctx.beginPath(); ctx.moveTo(px - 6, py); ctx.lineTo(px, py - 10); ctx.lineTo(px + 6, py); ctx.lineTo(px, py + 10); ctx.closePath(); ctx.stroke();
+                    break;
+                case 'prism':
+                    ctx.fillStyle = '#b39ddb'; ctx.beginPath(); ctx.moveTo(px, py - 7); ctx.lineTo(px + 7, py); ctx.lineTo(px, py + 7); ctx.lineTo(px - 7, py); ctx.closePath(); ctx.fill();
+                    break;
+                case 'sentinel':
+                    ctx.fillStyle = '#d1c4e9'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#fce4ec'; ctx.beginPath(); ctx.arc(px, py, 9, 0, Math.PI * 2); ctx.stroke();
+                    break;
+                case 'meteor':
+                    ctx.fillStyle = '#ff9e80'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#ffd180'; ctx.beginPath(); ctx.moveTo(px - 12, py); ctx.lineTo(px + 12, py); ctx.stroke();
+                    break;
+                case 'arc':
+                    ctx.fillStyle = '#82d8ff'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#dffaff'; ctx.beginPath(); ctx.moveTo(px - 10, py - 4); ctx.lineTo(px, py + 5); ctx.lineTo(px + 10, py - 4); ctx.stroke();
+                    break;
+                case 'ember':
+                    ctx.fillStyle = '#ffb74d'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#ffe0b2'; ctx.beginPath(); ctx.moveTo(px - 10, py); ctx.lineTo(px + 10, py); ctx.stroke();
+                    break;
+                case 'phoenix':
+                    ctx.fillStyle = '#ffca28'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#fff8c5'; ctx.beginPath(); ctx.moveTo(px - 10, py); ctx.lineTo(px, py - 10); ctx.lineTo(px + 10, py); ctx.stroke();
+                    break;
+                case 'guardian':
+                    ctx.fillStyle = '#a5d6a7'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#e8f5e9'; ctx.beginPath(); ctx.moveTo(px - 8, py); ctx.lineTo(px, py - 8); ctx.lineTo(px + 8, py); ctx.lineTo(px, py + 8); ctx.closePath(); ctx.stroke();
+                    break;
+                case 'thunder':
+                    ctx.fillStyle = '#fff176'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#fff9c4'; ctx.beginPath(); ctx.moveTo(px - 7, py - 8); ctx.lineTo(px + 2, py - 1); ctx.lineTo(px - 3, py + 8); ctx.lineTo(px + 8, py + 8); ctx.stroke();
+                    break;
+                case 'comet':
+                    ctx.fillStyle = '#f8bbd0'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#f3e5f5'; ctx.beginPath(); ctx.moveTo(px - 14, py); ctx.lineTo(px + 14, py); ctx.stroke();
+                    break;
+                case 'starfall':
+                    ctx.fillStyle = '#d7a7ff'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#f5d0fe'; ctx.beginPath(); ctx.moveTo(px, py - 12); ctx.lineTo(px, py + 12); ctx.moveTo(px - 12, py); ctx.lineTo(px + 12, py); ctx.stroke();
+                    break;
+                case 'abyss':
+                    ctx.fillStyle = '#2e2e2e'; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#b39ddb'; ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+                    break;
+                default:
+                    ctx.fillStyle = '#f1c40f'; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+                    break;
+            }
+            ctx.restore();
+        }
+
+        function drawCoin(coin) {
+            const x = coin.x * gridSize;
+            const y = coin.y * gridSize;
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+        }
+
+        function drawProp(prop) {
+            const x = prop.x * gridSize;
+            const y = prop.y * gridSize;
+            ctx.fillStyle = propTypes[prop.type].color;
+            ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'white'; ctx.font = '8px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(propTypes[prop.type].text, x, y + 20);
+        }
+
+        function drawPreview() {
+            if (!game.selected || !game.mouse) return;
+            const gx = Math.floor(game.mouse.x / gridSize);
+            const gy = Math.floor(game.mouse.y / gridSize);
+            const path = levelConfigs[game.level - 1].path;
+            const invalid = path.some(p => p.x === gx && p.y === gy) || game.towers.some(t => t.x === gx && t.y === gy);
+            ctx.fillStyle = invalid ? 'rgba(255,0,0,0.3)' : 'rgba(255,255,255,0.25)';
+            ctx.fillRect(gx * gridSize, gy * gridSize, gridSize, gridSize);
+            const cfg = towerTypes[game.selected];
+            ctx.strokeStyle = invalid ? 'rgba(255,0,0,0.6)' : 'rgba(255,255,255,0.6)';
+            ctx.beginPath(); ctx.arc(gx * gridSize + gridSize / 2, gy * gridSize + gridSize / 2, cfg.range * gridSize, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        function spawnWave(dt) {
+            const level = levelConfigs[game.level - 1];
+            if (game.waveIndex >= level.enemyWaves.length) {
+                if (!game.enemies.length) {
+                    game.gameOver = true;
+                    ui.gameOverText.textContent = game.level < levelConfigs.length ? `恭喜！通关第${game.level}关！` : '恭喜通关全部20关！';
+                    ui.gameOver.style.display = 'block';
+                    ui.nextLevel.disabled = game.level >= levelConfigs.length;
+                }
+                return;
+            }
+            const wave = level.enemyWaves[game.waveIndex];
+            if (game.time < wave.time) return;
+            game.waveTimer += dt;
+            if (game.waveTimer >= level.enemySpawnRate && wave.count > 0) {
+                const start = level.path[0];
+                const base = enemyTypes[wave.type];
+                game.enemies.push({
+                    x: start.x, y: start.y, pathIndex: 0, type: wave.type,
+                    health: base.health * level.enemyStrengthMultiplier,
+                    speed: base.speed * level.enemyStrengthMultiplier,
+                    gold: Math.floor(base.gold * level.enemyStrengthMultiplier),
+                    slowTimer: 0, poisonTimer: 0, poisonDamage: 0
+                });
+                wave.count--;
+                game.waveTimer = 0;
+                if (wave.count <= 0) game.waveIndex++;
+            }
+        }
+
+        function spawnProp(dt) {
+            const level = levelConfigs[game.level - 1];
+            if (Math.random() < level.propSpawnRate * dt) {
+                let gx, gy;
+                do {
+                    gx = Math.floor(Math.random() * (canvas.width / gridSize));
+                    gy = Math.floor(Math.random() * (canvas.height / gridSize));
+                } while (level.path.some(p => p.x === gx && p.y === gy));
+                const keys = Object.keys(propTypes);
+                game.props.push({ x: gx, y: gy, type: keys[Math.floor(Math.random() * keys.length)], timer: 0 });
+            }
+        }
+
+        function updateEnemies(dt) {
+            const path = levelConfigs[game.level - 1].path;
+            for (let i = game.enemies.length - 1; i >= 0; i--) {
+                const e = game.enemies[i];
+                if (e.slowTimer > 0) e.slowTimer = Math.max(0, e.slowTimer - dt);
+                if (e.poisonTimer > 0) {
+                    e.poisonTimer = Math.max(0, e.poisonTimer - dt);
+                    e.health -= e.poisonDamage * dt;
+                    if (e.health <= 0) {
+                        game.gold += e.gold; game.coins.push({ x: e.x, y: e.y, scale: 1, scaleSpeed: 0.02, timer: 0, value: e.gold });
+                        game.enemies.splice(i, 1); updateUI(); continue;
+                    }
+                }
+                const target = path[e.pathIndex + 1];
+                if (!target) {
+                    game.hp -= 1;
+                    game.enemies.splice(i, 1);
+                    updateUI();
+                    if (game.hp <= 0) {
+                        game.gameOver = true;
+                        ui.gameOverText.textContent = `游戏结束！敌人到达终点！当前关卡：${game.level}`;
+                        ui.gameOver.style.display = 'block';
+                    }
+                    continue;
+                }
+                const dx = target.x - e.x; const dy = target.y - e.y; const dist = Math.hypot(dx, dy);
+                if (dist > 0) {
+                    const speed = e.speed * (e.slowTimer > 0 ? 0.4 : 1) * dt;
+                    e.x += (dx / dist) * speed;
+                    e.y += (dy / dist) * speed;
+                    if (Math.abs(e.x - target.x) < 0.1 && Math.abs(e.y - target.y) < 0.1) e.pathIndex++;
+                }
+            }
+        }
+
+        function updateTowers(dt) {
+            for (const tower of game.towers) {
+                const c = towerTypes[tower.type];
+                const level = tower.level || 1;
+                if (tower.cooldown > 0) tower.cooldown -= dt;
+                if (tower.cooldown > 0) continue;
+                const range = c.range + (level - 1) * 0.5;
+                const targets = game.enemies.filter(e => Math.hypot(e.x - tower.x, e.y - tower.y) <= range);
+                if (!targets.length && tower.type !== 'healer') continue;
+                let target = targets[0];
+                if (tower.type === 'sniper') target = targets.reduce((a, b) => a.health > b.health ? a : b);
+                if (tower.type === 'aoe') target = targets[Math.floor(targets.length / 2)];
+                if (tower.type === 'slow') target = targets.reduce((a, b) => a.speed > b.speed ? a : b);
+                if (tower.type === 'poison') target = targets.reduce((a, b) => a.health < b.health ? a : b);
+                if (tower.type === 'laser') target = targets.reduce((a, b) => a.health > b.health ? a : b);
+                if (tower.type === 'nova') target = targets[Math.floor(targets.length / 2)];
+                tower.cooldown = c.fireRate / (level * 0.6);
+                if (tower.type === 'slow') {
+                    if (target) target.slowTimer = c.slowDuration * level;
+                } else if (tower.type === 'poison') {
+                    if (target) {
+                        target.poisonTimer = c.poisonDuration * level;
+                        target.poisonDamage = c.poisonDamage * level * game.damageBoost;
+                    }
+                } else if (tower.type === 'healer') {
+                    const healValue = c.heal * level;
+                    if (game.hp < 20) game.hp = Math.min(20, game.hp + healValue * 0.5);
+                    if (targets.length) {
+                        for (const enemy of targets) {
+                            enemy.health -= healValue * 0.5;
+                        }
+                    }
+                } else {
+                    if (target) {
+                        game.projectiles.push({ x: tower.x, y: tower.y, targetX: target.x, targetY: target.y, speed: 5, damage: (c.damage * level) * game.damageBoost, type: tower.type, aoeRadius: c.aoeRadius || 0 });
+                    }
+                }
+            }
+        }
+
+        function updateProjectiles() {
+            for (let i = game.projectiles.length - 1; i >= 0; i--) {
+                const p = game.projectiles[i];
+                const dx = p.targetX - p.x; const dy = p.targetY - p.y; const dist = Math.hypot(dx, dy);
+                if (dist < 0.1) {
+                    if (p.aoeRadius > 0) {
+                        for (const e of game.enemies) {
+                            if (Math.hypot(e.x - p.targetX, e.y - p.targetY) <= p.aoeRadius) e.health -= p.damage;
+                        }
+                    } else {
+                        for (const e of game.enemies) {
+                            if (Math.hypot(e.x - p.targetX, e.y - p.targetY) < 0.5) e.health -= p.damage;
+                        }
+                    }
+                    game.projectiles.splice(i, 1);
+                    continue;
+                }
+                const move = p.speed * (1 / 60);
+                p.x += (dx / dist) * move;
+                p.y += (dy / dist) * move;
+            }
+        }
+
+        function updateProps(dt) {
+            for (let i = game.props.length - 1; i >= 0; i--) {
+                const p = game.props[i];
+                p.timer += dt;
+                if (p.timer > 10) game.props.splice(i, 1);
+            }
+        }
+
+        function updateCoins(dt) {
+            for (let i = game.coins.length - 1; i >= 0; i--) {
+                const coin = game.coins[i];
+                coin.timer += dt;
+                if (coin.timer > 2) { game.coins.splice(i, 1); continue; }
+                const dx = (1 * gridSize) - coin.x * gridSize;
+                const dy = (1 * gridSize) - coin.y * gridSize;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 10) {
+                    coin.x += (dx / dist) * 0.5 * dt;
+                    coin.y += (dy / dist) * 0.5 * dt;
+                } else {
+                    game.coins.splice(i, 1);
+                }
+            }
+        }
+
+        function checkDeaths() {
+            for (let i = game.enemies.length - 1; i >= 0; i--) {
+                if (game.enemies[i].health <= 0) {
+                    const e = game.enemies[i];
+                    const comboBonus = Math.floor(game.combo * 2);
+                    const multiplier = 1 + Math.floor(game.combo / 5) * 0.2;
+                    const reward = Math.floor((e.gold + comboBonus) * multiplier);
+                    game.gold += reward;
+                    game.score += Math.floor(reward * 3);
+                    if (game.score > game.bestScore) {
+                        game.bestScore = game.score;
+                    }
+                    game.combo += 1;
+                    game.coins.push({ x: e.x, y: e.y, scale: 1, scaleSpeed: 0.02, timer: 0, value: reward });
+                    game.enemies.splice(i, 1);
+                    saveProgress();
+                    updateUI();
+                }
+            }
+        }
+
+        function pickProp(gx, gy) {
+            for (let i = game.props.length - 1; i >= 0; i--) {
+                const p = game.props[i];
+                if (p.x === gx && p.y === gy) {
+                    if (p.type === 'gold') game.gold += propTypes.gold.value;
+                    if (p.type === 'hp') game.hp += propTypes.hp.value;
+                    if (p.type === 'damage') game.damageBoost += propTypes.damage.value;
+                    game.props.splice(i, 1);
+                    updateUI();
+                    return;
+                }
+            }
+        }
+
+        function updateSkillCooldowns(dt) {
+            Object.keys(game.skillCooldowns).forEach(skill => {
+                if (game.skillCooldowns[skill] > 0) {
+                    game.skillCooldowns[skill] = Math.max(0, game.skillCooldowns[skill] - dt);
+                }
+            });
+        }
+
+        function useSkill(skillType) {
+            if (game.gameOver) return;
+            if ((game.skillCooldowns[skillType] || 0) > 0) return;
+            const def = skillDefs[skillType];
+            if (skillType === 'freeze') {
+                for (const enemy of game.enemies) enemy.slowTimer = Math.max(enemy.slowTimer, def.duration);
+                setEventText('冰封：敌人减速');
+                game.skillCooldowns[skillType] = def.cooldown;
+            } else if (skillType === 'bomb') {
+                for (const enemy of game.enemies) {
+                    enemy.health -= def.damage;
+                }
+                setEventText('爆裂：全体敌人受到 120 伤害');
+                game.skillCooldowns[skillType] = def.cooldown;
+            } else if (skillType === 'boost') {
+                game.gold += def.gold;
+                game.damageBoost += 0.15;
+                setEventText('补给：金币 +25，伤害 +15%');
+                game.skillCooldowns[skillType] = def.cooldown;
+            } else if (skillType === 'burst') {
+                for (const enemy of game.enemies) {
+                    enemy.health -= def.damage;
+                    enemy.slowTimer = Math.max(enemy.slowTimer, def.duration);
+                }
+                setEventText('冲击波：全体敌人受到 90 伤害并减速');
+                game.skillCooldowns[skillType] = def.cooldown;
+            }
+            updateUI();
+        }
+
+        function placeTower(gx, gy) {
+            if (!game.selected) return;
+            const cfg = towerTypes[game.selected];
+            if (game.gold < cfg.cost) return;
+            const path = levelConfigs[game.level - 1].path;
+            if (path.some(p => p.x === gx && p.y === gy) || game.towers.some(t => t.x === gx && t.y === gy)) return;
+            game.towers.push({ x: gx, y: gy, type: game.selected, cooldown: 0, level: 1 });
+            game.gold -= cfg.cost;
+            setEventText('建造成功：已放置 ' + game.selected + ' 塔');
+            game.selected = null;
+            updateUI();
+            ui.towerButtons.forEach(btn => btn.classList.remove('selected'));
+        }
+
+        function upgradeTower(gx, gy) {
+            for (const tower of game.towers) {
+                if (tower.x === gx && tower.y === gy) {
+                    const level = tower.level || 1;
+                    if (level >= 3) return;
+                    const cost = Math.floor(towerTypes[tower.type].cost * 1.5 * level);
+                    if (game.gold < cost) {
+                        alert(`升级需要${cost}金币，当前金币不足！`);
+                        return;
+                    }
+                    game.gold -= cost;
+                    tower.level = level + 1;
+                    updateUI();
+                    return;
+                }
+            }
+        }
+
+        function resetGame() {
+            resetLevelState();
+            game.gold = 50; game.hp = 10; game.selected = null; game.selectedTower = null; game.towers = []; game.enemies = []; game.projectiles = []; game.coins = []; game.props = []; game.gameOver = false; game.paused = false; game.time = 0; game.waveIndex = 0; game.waveTimer = 0; game.damageBoost = 1; game.combo = 0; game.score = 0; game.eventTimer = 18 + Math.random() * 12; game.skillCooldowns = { freeze: 0, bomb: 0, boost: 0, burst: 0 }; game.mouse = null; game.last = 0;
+            ui.gameOver.style.display = 'none';
+            setEventText('正常开局，准备防守');
+            updateUI();
+            if (game.animId) cancelAnimationFrame(game.animId);
+            game.animId = requestAnimationFrame(loop);
+        }
+
+        function restartGame() {
+            resetGame();
+        }
+
+        window.restartGame = restartGame;
+
+        function changeLevel(offset) {
+            const next = game.level + offset;
+            if (next < 1 || next > levelConfigs.length) return;
+            game.level = next;
+            resetGame();
+        }
+
+        function loop(ts) {
+            if (game.gameOver) return;
+            const dt = (ts - game.last) / 1000 || 0.016;
+            game.last = ts;
+            if (!game.paused) {
+                game.time += dt;
+                game.eventTimer -= dt;
+                if (game.eventTimer <= 0) triggerRandomEvent();
+                updateSkillCooldowns(dt);
+                spawnWave(dt);
+                spawnProp(dt);
+                updateEnemies(dt);
+                updateTowers(dt);
+                updateProjectiles();
+                updateProps(dt);
+                updateCoins(dt);
+                checkDeaths();
+            }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            game.towers.forEach(drawTower);
+            game.enemies.forEach(drawEnemy);
+            game.projectiles.forEach(drawProjectile);
+            game.coins.forEach(drawCoin);
+            game.props.forEach(drawProp);
+            drawPreview();
+            if (!game.gameOver) game.animId = requestAnimationFrame(loop);
+        }
+
+        ui.towerButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const type = btn.dataset.type;
+                const unlockLevel = towerUnlocks[type] || 1;
+                if (game.level < unlockLevel) {
+                    setEventText(`${towerNames[type]}：第 ${unlockLevel} 关解锁，继续通关后再来建造。`);
+                    return;
+                }
+                if (game.gold < Number(btn.dataset.cost)) {
+                    setEventText(`${towerNames[type]}需要 ${btn.dataset.cost} 金币，当前金币不足。`);
+                    return;
+                }
+                game.selected = type;
+                setEventText(`${towerNames[type]}：${towerDescriptions[type]}｜点击地图放置此塔。`);
+                ui.towerButtons.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+            });
+        });
+
+        ui.skillButtons.forEach(btn => {
+            btn.addEventListener('click', () => useSkill(btn.dataset.skill));
+        });
+
+        ui.pauseBtn.addEventListener('click', togglePause);
+        ui.sellTowerBtn.addEventListener('click', sellSelectedTower);
+        ui.triggerEventBtn.addEventListener('click', triggerRandomEvent);
+
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            game.mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        });
+
+        canvas.addEventListener('click', e => {
+            const rect = canvas.getBoundingClientRect();
+            const gx = Math.floor((e.clientX - rect.left) / gridSize);
+            const gy = Math.floor((e.clientY - rect.top) / gridSize);
+            const tower = getTowerAt(gx, gy);
+            if (tower) {
+                game.selectedTower = tower;
+                setEventText(`已选择塔：${tower.type}，可点击卖出塔`);
+                return;
+            }
+            pickProp(gx, gy);
+            placeTower(gx, gy);
+        });
+
+        canvas.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const gx = Math.floor((e.clientX - rect.left) / gridSize);
+            const gy = Math.floor((e.clientY - rect.top) / gridSize);
+            const tower = getTowerAt(gx, gy);
+            if (tower) {
+                game.selectedTower = tower;
+                upgradeTower(gx, gy);
+                return;
+            }
+            upgradeTower(gx, gy);
+        });
+
+        ui.prevLevel.addEventListener('click', () => changeLevel(-1));
+        ui.nextLevel.addEventListener('click', () => changeLevel(1));
+        ui.restart.addEventListener('click', resetGame);
+
+        loadProgress();
+        resetGame();
+    </script>
+</body>
+</html>
