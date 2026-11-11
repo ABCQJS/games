@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+const zombieList = [];
+const peaList = [];
+const shooterList = [];
+var plch;
+class zom {
+  constructor(start, end, speed, topY,damage,health) {
+    this.start = start;
+    this.end = end;
+    this.speed = speed;
+    this.x = this.start;
+    this.top = topY;
+    this.a = 1;
+    this.imgDom = null;
+    this.damage=damage;
+    this.health=health;
+    this.biteCd = 0;
+    this.isAttacking = false;
+  }
+  move() {
+    if(!this.isAttacking){
+      this.x += this.speed;
+      if (this.x <= this.end) {
+        this.x = this.start;
+      }
+    }
+    this.imgDom.style.left = this.x + 'px';
+    this.imgDom.style.top = this.top + 'px';
+    // 血量检测
+    if(this.health <= 0){
+      this.imgDom.remove();
+      const idx = zombieList.indexOf(this);
+      if(idx !== -1) zombieList.splice(idx,1);
+    }
+  }
+}
+class pea {
+  constructor(startX, startY) {
+    this.x = startX;
+    this.top = startY;
+    this.speed =16;
+    this.imgDom = null;
+  }
+  move() {
+    this.x += this.speed;
+    this.imgDom.style.left = this.x + 'px';
+    this.imgDom.style.top = this.top + 'px';
+    //飞出屏幕左边就删掉豌豆
+    if(this.x > 1400){
+      this.imgDom.remove();
+      const idx = peaList.indexOf(this);
+      if(idx !== -1) peaList.splice(idx,1);
+    }
+  }
+}
+class peashooter {
+  constructor(posX, posY){
+    this.x = posX;     //射手X，外部传入
+    this.topY = posY;  //射手Y，外部传入
+    this.fireCd = 0;
+    this.cdMax = 800;
+    this.imgDom = null;
+    this.health = 100;
+  }
+  update(delta){
+    this.fireCd += delta;
+    if(this.fireCd >= this.cdMax){
+      //枪口在射手图片右边，所以+70
+      createPea(this.x + 70, this.topY);
+      this.fireCd = 0;
+    }
+  }
+  takeDamage(num){
+    this.health -= num;
+    if(this.health <= 0){
+      this.imgDom.remove();
+      const idx = shooterList.indexOf(this);
+      if(idx !== -1) shooterList.splice(idx,1);
+    }
+  }
+}
+function rancreatezom(num)
+{
+for(let i=0; i < num; i++){
+    // 新建图片
+    const img = document.createElement("img");
+    img.src = "zom.png";
+    img.alt = "ERR002";
+    img.style.position = "absolute";
+    img.style.width = "100px";
+    img.style.height = "100px";
+    img.style.transform = "scaleX(-1)";
+    document.body.appendChild(img);
+    let baseSpeed = -2;
+    let rSpeed = baseSpeed * (0.975 + Math.random() * 0.05);
+    const yList = [100, 300, 200, 400, 500];
+    let rTop = yList[ Math.floor( Math.random() * yList.length ) ];
+    const z = new zom(1240, 0, rSpeed, rTop,50,270);
+    z.imgDom = img;
+    zombieList.push(z);
+}
+}
+function createPea(x,y)
+{
+    const img = document.createElement("img");
+    img.src = "pea.png";
+    img.style.position = "absolute";
+    img.style.width = "30px";
+    img.style.height = "30px";
+    document.body.appendChild(img);
+
+    const p = new pea(x, y);
+    p.imgDom = img;
+    peaList.push(p);
+}
+function createShooter(x,y){
+  const img = document.createElement("img");
+  img.src = "shooter.png";
+  img.style.position = "absolute";
+  img.style.width = "70px";
+  img.style.height = "70px";
+  img.style.left = x + "px";
+  img.style.top = y + "px";
+  document.body.appendChild(img);
+
+  const s = new peashooter(x, y);
+  s.imgDom = img;
+  shooterList.push(s);
+}
+
+function damage(num)
+{
+  if(zombieList[num]){
+    zombieList[num].health -= 20;
+  }
+}
+
+</script>
+    <meta charset="UTF-8">
+    <title>PVZ</title>
+    <style>
+        /* 容器，作为移动范围 */
+        #box {
+            width: 1340px;
+            height: 610px;
+            border: 1px solid #333;
+            position: relative;
+        }
+        /* 图片样式：必须absolute才能移动 */
+        #zom {
+            position: absolute;
+            left: 0px;  /* 初始x坐标 */
+            top: 50px;  /* 初始y坐标 */
+            width: 100px;
+            height:100px;
+            transform: scaleX(-1);
+        }
+    </style>
+</head>
+<body bgcolor=#00f0a0>
+    <img id="box" src="OIP-C.webp">
+    <button onclick="plch=1;event.stopPropagation();" style="position:absolute;left:155px;top:17px;background-color:#52fab1">
+    <img src="shooter.png" style="width:60px;height:60px;">
+    </button>
+    <script>
+	rancreatezom(10);
+	setInterval(()=>{
+    // ========== 植物与僵尸碰撞与啃咬 ==========
+    for(let z of zombieList){
+        let hitPlant = false;
+        for(let s of shooterList){
+            if(!s || !s.imgDom) continue;
+            const zombieRight = z.x + 100;
+            const zombieBottom = z.top + 100;
+            const plantRight = s.x + 70;
+            const plantBottom = s.topY + 70;
+            if(zombieRight >= s.x && z.x <= plantRight && zombieBottom >= s.topY && z.top <= plantBottom){
+                hitPlant = true;
+                z.isAttacking = true;
+                z.biteCd += 20;
+                if(z.biteCd >= 800){
+                    s.takeDamage(20);
+                    z.biteCd = 0;
+                }
+                break;
+            }
+        }
+        if(!hitPlant){
+            z.isAttacking = false;
+            z.biteCd = 0;
+        }
+    }
+    // 僵尸移动
+    for(let z of zombieList){
+        z.move();
+    }
+    // 豌豆移动
+    for(let p of peaList){
+        p.move();
+    }
+for(let s of shooterList){
+    s.update(20);
+}
+    // ========== 碰撞检测 ==========
+    for(let p of peaList){
+        for(let z of zombieList){
+            // 同一行才碰撞：top相等
+            if((p.top>=z.top-50)&&(p.top<=z.top+50)){
+                // 矩形碰撞：豌豆x 碰到僵尸的x范围
+                if(p.x >= z.x && p.x <= z.x + 100){
+                    // 僵尸扣血
+                    z.health -= 20;
+                    // 豌豆消失
+                    p.imgDom.remove();
+                    const pIdx = peaList.indexOf(p);
+                    if(pIdx !== -1) peaList.splice(pIdx,1);
+                    break;
+                }
+            }
+        }
+    }
+},20);
+document.getElementById("box").addEventListener('click', function(e){
+    if(e.target.closest('button')){
+        return;
+    }
+    var mouseX = e.offsetX;
+    var mouseY = e.offsetY;
+
+    // 数组：存全部格子【图片左上角】
+    const xLeftArr = [100,240,380,520,660,800,940,1080,1220];
+    const yLeftArr = [100,200,300,400,500];
+
+    let pointList = [];
+    for(let lx of xLeftArr){
+        for(let ly of yLeftArr){
+            const cx = lx + 35;   //左上角 → 图片中心X (70/2=35)
+            const cy = ly + 35;   //左上角 → 图片中心Y
+            pointList.push({cx, cy, leftX:lx, topY:ly});
+        }
+    }
+
+    //找离鼠标最近的【图片中心点】
+    let nearest = pointList[0];
+    let minDist = Infinity;
+    for(let p of pointList){
+        const dx = mouseX - p.cx;
+        const dy = mouseY - p.cy;
+        const dist = dx*dx + dy*dy;
+        if(dist < minDist){
+            minDist = dist;
+            nearest = p;
+        }
+    }
+
+    if(plch===1)
+    {
+        //传入：左上角，以及图片中心点
+        createShooter(nearest.leftX, nearest.topY);
+        plch=0;
+    }
+});
+document.addEventListener('keydown',function(e){
+if(e.key === "1"){
+        plch = 1;
+}
+});
+    </script>
+</body>
+</html>
